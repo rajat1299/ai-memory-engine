@@ -3,7 +3,7 @@ FastAPI Main Application
 This is the entry point for the Memori API service.
 """
 from fastapi import FastAPI
-from app.api import ingest, recall
+from app.api import ingest, recall, conscious
 
 app = FastAPI(
     title="Memori API",
@@ -14,6 +14,7 @@ app = FastAPI(
 # Include API routers
 app.include_router(ingest.router)
 app.include_router(recall.router)
+app.include_router(conscious.router)
 
 
 @app.get("/")
