@@ -46,3 +46,20 @@ class Session(Base):
     user = relationship("User", back_populates="sessions")
     chat_logs = relationship("ChatLog", back_populates="session")
 
+
+class MemoryFact(Base):
+    """Memory Facts table - The 'Long Term' Memory"""
+    __tablename__ = "memory_facts"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    category = Column(Enum(MemoryCategory), nullable=False)
+    content = Column(Text, nullable=False)
+    confidence_score = Column(Float, default=1.0)
+    valid_until = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    user = relationship("User", back_populates="memory_facts")
+
+
