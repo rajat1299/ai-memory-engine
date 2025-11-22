@@ -41,3 +41,9 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+
+  # The Speed: Redis for Task Queue & Caching
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
