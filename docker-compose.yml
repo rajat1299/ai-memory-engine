@@ -34,5 +34,8 @@ services:
   db:
     image: pgvector/pgvector:pg15
     environment:
-
-
+      - POSTGRES_USER=memori
+      - POSTGRES_PASSWORD=memori
+      - POSTGRES_DB=memori
+    ports:
+      - "5432:5432"
