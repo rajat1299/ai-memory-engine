@@ -20,3 +20,8 @@ services:
   worker:
     build: .
     command: arq app.worker.tasks.WorkerSettings
+    volumes:
+      - .:/code
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://memori:memori@db:5432/memori
+      - REDIS_URL=redis://redis:6379
