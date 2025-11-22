@@ -10,3 +10,10 @@ RUN apt-get update && apt-get install -y \
     postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
+# Upgrade pip
+RUN pip install --upgrade pip
+
+# Copy requirements file
+COPY requirements.txt .
+
+
