@@ -1,0 +1,33 @@
+"""
+SQLAlchemy Models - Database Table Definitions
+Following the strict schema from the plan.
+"""
+import uuid
+from datetime import datetime
+from enum import Enum as PyEnum
+from sqlalchemy import Column, String, DateTime, Float, ForeignKey, Text, Enum
+from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import relationship
+
+Base = declarative_base()
+
+
+class MemoryCategory(str, PyEnum):
+    """Enum for memory fact categories"""
+    USER_PREFERENCE = "USER_PREFERENCE"
+    BIOGRAPHICAL_FACT = "BIOGRAPHICAL_FACT"
+    WORK_CONTEXT = "WORK_CONTEXT"
+
+
+class User(Base):
+    """Users table - Multi-tenancy support"""
+    __tablename__ = "users"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    api_key_hash = Column(String, unique=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Relationships (reverse)
+    sessions = relationship("Session", back_populates="user")
+    memory_facts = relationship("MemoryFact", back_populates="user")
