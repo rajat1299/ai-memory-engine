@@ -5,76 +5,75 @@ Following the strict schema from the plan.
 import uuid
 from datetime import datetime
 from enum import Enum as PyEnum
-from sqlalchemy import Column, String, DateTime, Float, ForeignKey, Text, Enum
-from sqlalchemy.dialects.postgresql import UUID, JSONB
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship
+from sqlalchemy import String, DateTime, ForeignKey, Float, Text, UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.ext.asyncio import AsyncAttrs
+from sqlalchemy.orm import DeclarativeBase
 
-Base = declarative_base()
+class Base(AsyncAttrs, DeclarativeBase):
+    """Base class for all models. Enables async attributes."""
+    pass
 
-
-class MemoryCategory(str, PyEnum):
-    """Enum for memory fact categories"""
-    USER_PREFERENCE = "USER_PREFERENCE"
-    BIOGRAPHICAL_FACT = "BIOGRAPHICAL_FACT"
-    WORK_CONTEXT = "WORK_CONTEXT"
-
+class FactCategory(str, PyEnum):
+    USER_PREFERENCE = "user_preference"   # e.g. "Likes dark mode"
+    BIOGRAPHICAL = "biographical"         # e.g. "Lives in Dallas"
+    WORK_CONTEXT = "work_context"         # e.g. "Working on Project X"
+    RELATIONSHIP = "relationship"         # e.g. "Manager is Sarah"
 
 class User(Base):
-    """Users table - Multi-tenancy support"""
     __tablename__ = "users"
-    
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    api_key_hash = Column(String, unique=True, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    
-    # Relationships (reverse)
-    sessions = relationship("Session", back_populates="user")
-    memory_facts = relationship("MemoryFact", back_populates="user")
 
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    api_key_hash: Mapped[str] = mapped_column(String, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    sessions: Mapped[list["Session"]] = relationship(back_populates="user")
+    facts: Mapped[list["MemoryFact"]] = relationship(back_populates="user")
 
 class Session(Base):
-    """Sessions table - Grouping conversations"""
     __tablename__ = "sessions"
-    
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-    metadata = Column(JSONB, default=dict)
-    created_at = Column(DateTime, default=datetime.utcnow)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     
     # Relationships
-    user = relationship("User", back_populates="sessions")
-    chat_logs = relationship("ChatLog", back_populates="session")
-
-
-class MemoryFact(Base):
-    """Memory Facts table - The 'Long Term' Memory"""
-    __tablename__ = "memory_facts"
-    
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-    category = Column(Enum(MemoryCategory), nullable=False)
-    content = Column(Text, nullable=False)
-    confidence_score = Column(Float, default=1.0)
-    valid_until = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    
-    # Relationships
-    user = relationship("User", back_populates="memory_facts")
-
+    user: Mapped["User"] = relationship(back_populates="sessions")
+    chat_logs: Mapped[list["ChatLog"]] = relationship(back_populates="session")
 
 class ChatLog(Base):
-    """Chat Logs table - The Raw Record"""
+    """Raw record of every message sent/received."""
     __tablename__ = "chat_logs"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    session_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sessions.id"))
+    role: Mapped[str] = mapped_column(String(20)) # 'user' or 'assistant'
+    content: Mapped[str] = mapped_column(Text)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    session: Mapped["Session"] = relationship(back_populates="chat_logs")
+
+class MemoryFact(Base):
+    """
+    THE BRAIN: Extracted atomic facts about the user.
+    These are created by the Background Worker, not the API directly.
+    """
+    __tablename__ = "memory_facts"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
     
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    session_id = Column(UUID(as_uuid=True), ForeignKey("sessions.id"), nullable=False)
-    role = Column(String, nullable=False)  # 'user' or 'assistant'
-    content = Column(Text, nullable=False)
-    timestamp = Column(DateTime, default=datetime.utcnow)
+    category: Mapped[FactCategory] = mapped_column(String, index=True)
+    content: Mapped[str] = mapped_column(Text) # The actual fact
+    confidence_score: Mapped[float] = mapped_column(Float)
     
-    # Relationships
-    session = relationship("Session", back_populates="chat_logs")
+    # Origin tracking
+    source_message_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    user: Mapped["User"] = relationship(back_populates="facts")
+
 
 
 
