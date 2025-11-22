@@ -15,3 +15,8 @@ services:
     depends_on:
       - db
       - redis
+
+  # The Muscle: Where memory processing happens (Async Worker)
+  worker:
+    build: .
+    command: arq app.worker.tasks.WorkerSettings
