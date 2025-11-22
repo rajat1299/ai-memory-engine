@@ -10,3 +10,8 @@ services:
     ports:
       - "8000:8000"
     environment:
+      - DATABASE_URL=postgresql+asyncpg://memori:memori@db:5432/memori
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - db
+      - redis
