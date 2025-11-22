@@ -6,28 +6,28 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import UUID
 from app.database import get_db
-from app.schemas import ChatLogCreate, ChatLogResponse, SessionCreate, SessionResponse
+from app.schemas import IngestRequest, IngestResponse, SessionCreate, SessionResponse, HistoryResponse, ChatLogResponse
 from app.models import ChatLog, Session
 from sqlalchemy import select
 
 router = APIRouter(prefix="/v1", tags=["ingestion"])
 
 
-@router.post("/ingest", response_model=ChatLogResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/ingest", response_model=IngestResponse, status_code=status.HTTP_201_CREATED)
 async def ingest_message(
-    log: ChatLogCreate,
+    request: IngestRequest,
     db: AsyncSession = Depends(get_db)
 ):
     """
     POST /v1/ingest
-    Save a chat message to the database.
+    Save a chat message to the database and trigger memory extraction.
     This is the entry point for all conversations.
     """
     # Create new chat log
     db_log = ChatLog(
-        session_id=log.session_id,
-        role=log.role,
-        content=log.content
+        session_id=request.session_id,
+        role=request.role,
+        content=request.content
     )
     
     db.add(db_log)
@@ -36,9 +36,13 @@ async def ingest_message(
     
     # Enqueue background job for memory extraction
     from app.worker.queue import enqueue_memory_extraction
-    await enqueue_memory_extraction(str(log.session_id))
+    job_id = await enqueue_memory_extraction(str(request.session_id))
     
-    return db_log
+    return IngestResponse(
+        status="queued",
+        job_id=job_id,
+        chat_log_id=db_log.id
+    )
 
 
 @router.post("/sessions", response_model=SessionResponse, status_code=status.HTTP_201_CREATED)
@@ -59,7 +63,7 @@ async def create_session(
     return db_session
 
 
-@router.get("/history/{session_id}", response_model=list[ChatLogResponse])
+@router.get("/history/{session_id}", response_model=HistoryResponse)
 async def get_history(
     session_id: UUID,
     limit: int = 50,
@@ -76,5 +80,9 @@ async def get_history(
     result = await db.execute(stmt)
     logs = result.scalars().all()
     
-    # Return in chronological order
-    return list(reversed(logs))
+    # Return in chronological order wrapped in HistoryResponse
+    return HistoryResponse(
+        messages=list(reversed(logs)),
+        session_id=session_id
+    )
+
