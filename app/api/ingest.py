@@ -34,7 +34,9 @@ async def ingest_message(
     await db.commit()
     await db.refresh(db_log)
     
-    # TODO: Enqueue background job for memory extraction
+    # Enqueue background job for memory extraction
+    from app.worker.queue import enqueue_memory_extraction
+    await enqueue_memory_extraction(str(log.session_id))
     
     return db_log
 
