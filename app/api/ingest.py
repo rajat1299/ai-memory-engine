@@ -8,6 +8,7 @@ from uuid import UUID
 from app.database import get_db
 from app.schemas import IngestRequest, IngestResponse, SessionCreate, SessionResponse, HistoryResponse, ChatLogResponse
 from app.models import ChatLog, Session
+from app.services.ingestion import IngestionService
 from sqlalchemy import select
 
 router = APIRouter(prefix="/v1", tags=["ingestion"])
@@ -20,29 +21,14 @@ async def ingest_message(
 ):
     """
     POST /v1/ingest
-    Save a chat message to the database and trigger memory extraction.
-    This is the entry point for all conversations.
+    RULE: No business logic here.
+    1. Validate Input (Done by Pydantic)
+    2. Call Service
+    3. Return Output
     """
-    # Create new chat log
-    db_log = ChatLog(
-        session_id=request.session_id,
-        role=request.role,
-        content=request.content
-    )
-    
-    db.add(db_log)
-    await db.commit()
-    await db.refresh(db_log)
-    
-    # Enqueue background job for memory extraction
-    from app.worker.queue import enqueue_memory_extraction
-    job_id = await enqueue_memory_extraction(str(request.session_id))
-    
-    return IngestResponse(
-        status="queued",
-        job_id=job_id,
-        chat_log_id=db_log.id
-    )
+    service = IngestionService(db)
+    result = await service.process_message(request)
+    return result
 
 
 @router.post("/sessions", response_model=SessionResponse, status_code=status.HTTP_201_CREATED)
