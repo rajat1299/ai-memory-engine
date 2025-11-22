@@ -31,3 +31,18 @@ class User(Base):
     # Relationships (reverse)
     sessions = relationship("Session", back_populates="user")
     memory_facts = relationship("MemoryFact", back_populates="user")
+
+
+class Session(Base):
+    """Sessions table - Grouping conversations"""
+    __tablename__ = "sessions"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    metadata = Column(JSONB, default=dict)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    user = relationship("User", back_populates="sessions")
+    chat_logs = relationship("ChatLog", back_populates="session")
+
