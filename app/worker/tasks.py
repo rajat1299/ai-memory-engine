@@ -4,7 +4,7 @@ Phase 4: Enhanced Memory Extraction with Deduplication
 """
 import asyncio
 import logging
-from arq import create_pool
+from arq import create_pool, cron
 from arq.connections import RedisSettings
 from openai import AsyncOpenAI
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
@@ -178,10 +178,133 @@ Categories:
 class WorkerSettings:
     """ARQ worker configuration"""
     
-    functions = [extract_facts_task]
+    functions = [extract_facts_task, optimize_user_memory, scheduled_optimization]
     
     redis_settings = RedisSettings.from_dsn(str(settings.REDIS_URL))
     
     # Worker behavior
     max_jobs = 10
-    job_timeout = 120  # 2 minutes per job (increased for LLM calls)
+    job_timeout = 120  # 2 minutes per job
+    
+    # Cron jobs
+    cron_jobs = [
+        cron(scheduled_optimization, hour={0, 6, 12, 18}, minute=0)
+    ]
+
+
+# ============================================================================
+# Memory Optimization (Conscious Agent)
+# ============================================================================
+
+class OptimizationResponse(BaseModel):
+    """Response from LLM identifying essential facts"""
+    essential_fact_ids: list[int] = Field(
+        description="List of IDs for facts that are essential/core to the user's identity"
+    )
+
+
+async def optimize_user_memory(ctx: dict[str, Any], user_id: str) -> dict:
+    """
+    Analyze user's memories and mark essential ones.
+    This mimics the "Conscious Agent" promoting memories to short-term context.
+    """
+    logger.info(f"Starting memory optimization for user {user_id}")
+    
+    engine = create_async_engine(str(settings.DATABASE_URL))
+    async with AsyncSession(engine) as db:
+        try:
+            # 1. Fetch all non-essential facts
+            # Note: In a real app, you might want to limit this or paginate
+            stmt = select(MemoryFact).where(
+                MemoryFact.user_id == user_id,
+                MemoryFact.is_essential == False
+            )
+            result = await db.execute(stmt)
+            facts = result.scalars().all()
+            
+            if not facts:
+                return {"status": "no_facts_to_optimize", "user_id": user_id}
+            
+            # 2. Prepare facts for LLM
+            # We send ID and content. We use the integer index in the list as a proxy ID for the LLM
+            # because UUIDs can be long and error-prone in lists.
+            facts_list = [
+                f"[{i}] ({fact.category.value}) {fact.content}"
+                for i, fact in enumerate(facts)
+            ]
+            facts_text = "\n".join(facts_list)
+            
+            # 3. Call LLM to identify essential facts
+            response = await openai_client.chat.completions.create(
+                model="gpt-4o-mini",
+                response_model=OptimizationResponse,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": """You are a Conscious Memory Agent. Your goal is to identify "Essential Memories" that should be always available to the AI.
+
+Essential Memories are:
+1. Core User Identity (Name, Role, Location)
+2. Permanent Preferences (Coding style, Dietary restrictions)
+3. Long-term Goals or Projects
+4. Important Relationships
+
+Ignore:
+- Temporary context
+- One-off facts
+- Low confidence items
+
+Return the list of INDICES (the number in brackets) for facts that are essential."""
+                    },
+                    {
+                        "role": "user",
+                        "content": f"Analyze these facts and return indices of essential ones:\n\n{facts_text}"
+                    }
+                ]
+            )
+            
+            # 4. Update Database
+            promoted_count = 0
+            for index in response.essential_fact_ids:
+                if 0 <= index < len(facts):
+                    fact = facts[index]
+                    fact.is_essential = True
+                    db.add(fact)
+                    promoted_count += 1
+            
+            await db.commit()
+            logger.info(f"Promoted {promoted_count} facts to essential for user {user_id}")
+            
+            return {
+                "status": "success",
+                "promoted": promoted_count,
+                "total_analyzed": len(facts),
+                "user_id": user_id
+            }
+            
+        except Exception as e:
+            logger.error(f"Error optimizing memory: {str(e)}", exc_info=True)
+            return {"status": "error", "error": str(e)}
+        finally:
+            await engine.dispose()
+
+
+async def scheduled_optimization(ctx: dict[str, Any]):
+    """
+    Cron task: Find all users and enqueue optimization for them.
+    """
+    logger.info("Running scheduled memory optimization")
+    engine = create_async_engine(str(settings.DATABASE_URL))
+    
+    async with AsyncSession(engine) as db:
+        # Get all distinct user_ids from facts table
+        # (In a real app, query the Users table)
+        stmt = select(MemoryFact.user_id).distinct()
+        result = await db.execute(stmt)
+        user_ids = result.scalars().all()
+        
+        for user_id in user_ids:
+            await ctx["redis"].enqueue_job("optimize_user_memory", str(user_id))
+            
+    await engine.dispose()
+
