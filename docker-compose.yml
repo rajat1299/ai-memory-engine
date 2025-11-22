@@ -29,3 +29,10 @@ services:
     depends_on:
       - db
       - redis
+
+  # The Truth: PostgreSQL 15 with pgvector support
+  db:
+    image: pgvector/pgvector:pg15
+    environment:
+
+
