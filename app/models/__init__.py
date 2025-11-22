@@ -66,14 +66,11 @@ class MemoryFact(Base):
     
     category: Mapped[FactCategory] = mapped_column(String, index=True)
     content: Mapped[str] = mapped_column(Text) # The actual fact
-    confidence_score: Mapped[float] = mapped_column(Float)
+    # Metadata
+    confidence_score: Mapped[float] = mapped_column(Float, default=1.0)
+    source_message_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), default=None, nullable=True)
+    is_essential: Mapped[bool] = mapped_column(default=False, server_default="false")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=func.now())
     
-    # Origin tracking
-    source_message_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-
+    # Relationships
     user: Mapped["User"] = relationship(back_populates="facts")
-
-
-
-
