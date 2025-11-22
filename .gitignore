@@ -1,0 +1,10 @@
+# Memori Project - Git Ignore
+# Internal planning documents
+plan
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
