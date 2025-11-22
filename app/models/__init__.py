@@ -63,3 +63,18 @@ class MemoryFact(Base):
     user = relationship("User", back_populates="memory_facts")
 
 
+class ChatLog(Base):
+    """Chat Logs table - The Raw Record"""
+    __tablename__ = "chat_logs"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    session_id = Column(UUID(as_uuid=True), ForeignKey("sessions.id"), nullable=False)
+    role = Column(String, nullable=False)  # 'user' or 'assistant'
+    content = Column(Text, nullable=False)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    session = relationship("Session", back_populates="chat_logs")
+
+
+
