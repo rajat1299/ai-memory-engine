@@ -1,6 +1,6 @@
-# Memori API - The Sidecar Brain
+# "Mémoire" API 
 
-**Memori** is a production-grade, service-oriented memory engine for AI agents. It provides persistent, long-term memory without the complexity of vector databases or the fragility of in-process libraries.
+**Mémoire** is a production-grade, service-oriented memory engine for AI agents. It provides persistent, long-term memory without the complexity of vector databases or the fragility of in-process libraries.
 
 Designed as a "Sidecar Brain," it runs alongside your main application, handling memory ingestion, storage, optimization, and retrieval via a clean REST API.
 
@@ -17,7 +17,7 @@ Designed as a "Sidecar Brain," it runs alongside your main application, handling
   - Uses OpenAI + `instructor` for structured, type-safe fact extraction.
   - **Automatic Deduplication** prevents memory bloat.
   - **Periodic Optimization**: Background agents groom and promote essential memories.
-- **"Junior-Proof" Design**:
+- **"Safe-Proof" Design**:
   - Strict Pydantic schemas for all inputs/outputs.
   - No business logic in routes.
   - Impossible to corrupt memory state via API.
