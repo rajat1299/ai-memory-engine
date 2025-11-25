@@ -4,6 +4,7 @@ This is the entry point for the Memori API service.
 """
 from fastapi import FastAPI
 from app.api import ingest, recall, conscious
+from app.api import auth, facts
 from app.worker.queue import close_redis_pool
 
 app = FastAPI(
@@ -16,6 +17,8 @@ app = FastAPI(
 app.include_router(ingest.router)
 app.include_router(recall.router)
 app.include_router(conscious.router)
+app.include_router(auth.router)
+app.include_router(facts.router)
 
 
 @app.get("/")

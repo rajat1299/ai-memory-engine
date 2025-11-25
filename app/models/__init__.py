@@ -27,7 +27,7 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    api_key_hash: Mapped[str] = mapped_column(String, index=True)
+    api_key_hash: Mapped[Optional[str]] = mapped_column(String, index=True, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc)
@@ -90,6 +90,18 @@ class MemoryFact(Base):
     embedding: Mapped[Optional[list[float]]] = mapped_column(
         Vector(settings.EMBEDDING_DIM),
         nullable=True
+    )
+    superseded_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("memory_facts.id"),
+        nullable=True,
+        index=True
+    )
+    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_refreshed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        server_default=func.now()
     )
     
     # Relationships

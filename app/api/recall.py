@@ -56,12 +56,15 @@ async def recall_facts(
     except Exception as exc:
         logger.warning(f"Falling back to fuzzy recall; embedding failed: {exc}")
     
+    now_ts = None
     if query_embedding:
         vector_stmt = (
             select(MemoryFact)
             .where(
                 MemoryFact.user_id == request.user_id,
-                MemoryFact.embedding.is_not(None)
+                MemoryFact.embedding.is_not(None),
+                MemoryFact.superseded_by.is_(None),
+                MemoryFact.expires_at.is_(None)
             )
             .order_by(MemoryFact.embedding.cosine_distance(query_embedding))
             .limit(request.limit)
@@ -74,7 +77,11 @@ async def recall_facts(
         candidate_pool = min(max(request.limit * 10, 50), 500)
         stmt = (
             select(MemoryFact)
-            .where(MemoryFact.user_id == request.user_id)
+            .where(
+                MemoryFact.user_id == request.user_id,
+                MemoryFact.superseded_by.is_(None),
+                MemoryFact.expires_at.is_(None),
+            )
             .order_by(MemoryFact.created_at.desc())
             .limit(candidate_pool)
         )

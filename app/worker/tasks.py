@@ -16,6 +16,7 @@ from rapidfuzz import fuzz
 from app.config import settings
 from app.models import ChatLog, MemoryFact, FactCategory, Session
 from app.llm import get_llm_provider
+from datetime import datetime, timezone, timedelta
 
 # Setup Logger
 logger = logging.getLogger(__name__)
@@ -60,6 +61,13 @@ def _is_fuzzy_duplicate(existing_texts: list[str], candidate: str, threshold: in
         if fuzz.WRatio(existing, candidate) >= threshold:
             return True
     return False
+
+
+def _supersedable_category(category: FactCategory) -> bool:
+    """
+    Categories that should typically have one active value (e.g., location).
+    """
+    return category in {FactCategory.BIOGRAPHICAL, FactCategory.RELATIONSHIP}
 
 
 async def extract_facts_task(ctx: dict[str, Any], session_id: str) -> dict:
@@ -136,7 +144,8 @@ Categories:
             
             # 4. Deduplicate against existing facts
             stmt_existing = select(MemoryFact).where(
-                MemoryFact.user_id == user_id
+                MemoryFact.user_id == user_id,
+                MemoryFact.expires_at.is_(None)
             )
             existing_result = await db.execute(stmt_existing)
             existing_facts = existing_result.scalars().all()
@@ -146,9 +155,19 @@ Categories:
             
             # Filter out duplicates and save new facts (with embeddings)
             pending_facts: list[MemoryFact] = []
+            supersede_queue: list[MemoryFact] = []
             for extracted in extracted_facts:
-                if _is_fuzzy_duplicate(existing_contents, extracted.content):
-                    logger.debug(f"Duplicate fact skipped: {extracted.content}")
+                duplicate_match = None
+                for fact in existing_facts:
+                    if _is_fuzzy_duplicate([fact.content], extracted.content):
+                        duplicate_match = fact
+                        break
+                if duplicate_match:
+                    # Refresh existing fact instead of creating a new one
+                    duplicate_match.last_refreshed_at = datetime.now(timezone.utc)
+                    duplicate_match.confidence_score = max(duplicate_match.confidence_score, extracted.confidence)
+                    db.add(duplicate_match)
+                    logger.debug(f"Refreshed existing fact: {duplicate_match.id}")
                     continue
                 
                 new_fact = MemoryFact(
@@ -161,6 +180,16 @@ Categories:
                 pending_facts.append(new_fact)
                 existing_contents.append(extracted.content)
                 logger.info(f"New fact: [{extracted.category.value}] {extracted.content}")
+
+                # Supersede older facts in the same category when applicable
+                if _supersedable_category(extracted.category):
+                    supersede_queue.extend(
+                        [
+                            fact
+                            for fact in existing_facts
+                            if fact.category == extracted.category and fact.superseded_by is None
+                        ]
+                    )
 
             facts_saved = 0
             if pending_facts:
@@ -175,6 +204,18 @@ Categories:
                     fact.embedding = embedding
                     db.add(fact)
                     facts_saved += 1
+                
+                # Flush to obtain IDs for supersession updates
+                await db.flush()
+                for fact in supersede_queue:
+                    # Supersede older facts with the newest pending fact of that category
+                    newest = next(
+                        (f for f in pending_facts if f.category == fact.category),
+                        None
+                    )
+                    if newest:
+                        fact.superseded_by = newest.id
+                        db.add(fact)
             
             await db.commit()
             
@@ -228,7 +269,9 @@ async def optimize_user_memory(ctx: dict[str, Any], user_id: str) -> dict:
                 select(MemoryFact)
                 .where(
                     MemoryFact.user_id == user_id,
-                    MemoryFact.is_essential == False
+                    MemoryFact.is_essential == False,
+                    MemoryFact.superseded_by.is_(None),
+                    MemoryFact.expires_at.is_(None),
                 )
                 .order_by(
                     MemoryFact.confidence_score.desc(),
@@ -323,10 +366,34 @@ async def scheduled_optimization(ctx: dict[str, Any]):
             await ctx["redis"].enqueue_job("optimize_user_memory", str(user_id))
 
 
+async def decay_stale_facts(ctx: dict[str, Any]):
+    """
+    Periodic decay of stale facts to reduce confidence over time.
+    """
+    logger.info("Running decay job for stale facts")
+    cutoff_days = 30
+    decay_factor = 0.9
+    async with worker_sessionmaker() as db:
+        now = datetime.now(timezone.utc)
+        stmt = select(MemoryFact).where(
+            MemoryFact.superseded_by.is_(None),
+            MemoryFact.expires_at.is_(None),
+            MemoryFact.last_refreshed_at < now - timedelta(days=cutoff_days),
+        )
+        result = await db.execute(stmt)
+        stale_facts = result.scalars().all()
+        for fact in stale_facts:
+            fact.confidence_score = max(0.1, fact.confidence_score * decay_factor)
+            db.add(fact)
+        if stale_facts:
+            await db.commit()
+            logger.info(f"Decayed {len(stale_facts)} stale facts")
+
+
 class WorkerSettings:
     """ARQ worker configuration"""
     
-    functions = [extract_facts_task, optimize_user_memory, scheduled_optimization]
+    functions = [extract_facts_task, optimize_user_memory, scheduled_optimization, decay_stale_facts]
     
     redis_settings = RedisSettings.from_dsn(str(settings.REDIS_URL))
     
@@ -338,7 +405,8 @@ class WorkerSettings:
     
     # Cron jobs
     cron_jobs = [
-        cron(scheduled_optimization, hour={0, 6, 12, 18}, minute=0)
+        cron(scheduled_optimization, hour={0, 6, 12, 18}, minute=0),
+        cron(decay_stale_facts, hour={3}, minute=0)
     ]
     
     @staticmethod

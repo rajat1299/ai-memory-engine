@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     EMBEDDING_MODEL: str = "text-embedding-3-small"
     EMBEDDING_DIM: int = 1536
     
+    # API protection
+    RATE_LIMIT_REQUESTS_PER_MIN: int = 60
+    
     # App Settings
     API_V1_STR: str = "/api/v1"
     PROJECT_NAME: str = "Memori Service"

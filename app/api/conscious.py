@@ -30,7 +30,9 @@ async def get_conscious_memory(
     await ensure_user_authorized(user_id, api_key, db)
     stmt = select(MemoryFact).where(
         MemoryFact.user_id == user_id,
-        MemoryFact.is_essential == True
+        MemoryFact.is_essential == True,
+        MemoryFact.superseded_by.is_(None),
+        MemoryFact.expires_at.is_(None)
     ).order_by(MemoryFact.confidence_score.desc())
     
     result = await db.execute(stmt)
