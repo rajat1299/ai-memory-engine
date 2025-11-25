@@ -2,13 +2,14 @@
 API Routes - Conscious Memory Endpoint
 Phase 5: Periodic Conscious Agent
 """
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from uuid import UUID
 from app.database import get_db
 from app.schemas import RecallResponse, FactDTO
 from app.models import MemoryFact
+from app.security import ensure_user_authorized, API_KEY_HEADER
 
 router = APIRouter(prefix="/v1", tags=["conscious"])
 
@@ -16,7 +17,8 @@ router = APIRouter(prefix="/v1", tags=["conscious"])
 @router.get("/conscious/{user_id}", response_model=RecallResponse)
 async def get_conscious_memory(
     user_id: UUID,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    api_key: str | None = Header(default=None, alias=API_KEY_HEADER)
 ):
     """
     GET /v1/conscious/{user_id}
@@ -25,6 +27,7 @@ async def get_conscious_memory(
     
     Use this at application startup to load user context.
     """
+    await ensure_user_authorized(user_id, api_key, db)
     stmt = select(MemoryFact).where(
         MemoryFact.user_id == user_id,
         MemoryFact.is_essential == True

@@ -4,7 +4,7 @@ Phase 4: Enhanced Memory Extraction with Deduplication
 """
 import asyncio
 import logging
-from arq import cron
+from arq import cron, Retry
 from arq.connections import RedisSettings
 from openai import AsyncOpenAI, APIError, RateLimitError, APIConnectionError, APITimeoutError
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
@@ -221,6 +221,9 @@ Categories:
                 "session_id": session_id
             }
             
+        except (RateLimitError, APIError, APIConnectionError, APITimeoutError) as e:
+            logger.warning(f"Transient error extracting facts for session {session_id}: {e}")
+            raise Retry(defer=30) from e
         except Exception as e:
             logger.error(f"Error extracting facts: {str(e)}", exc_info=True)
             return {
@@ -331,6 +334,9 @@ Return the list of INDICES (the number in brackets) for facts that are essential
                 "user_id": user_id
             }
             
+        except (RateLimitError, APIError, APIConnectionError, APITimeoutError) as e:
+            logger.warning(f"Transient error optimizing memory for user {user_id}: {e}")
+            raise Retry(defer=30) from e
         except Exception as e:
             logger.error(f"Error optimizing memory: {str(e)}", exc_info=True)
             return {"status": "error", "error": str(e)}
@@ -362,6 +368,8 @@ class WorkerSettings:
     # Worker behavior
     max_jobs = 10
     job_timeout = 120  # 2 minutes per job
+    retry_jobs = True
+    max_tries = 5
     
     # Cron jobs
     cron_jobs = [
@@ -371,4 +379,3 @@ class WorkerSettings:
     @staticmethod
     async def on_shutdown(ctx):
         await worker_engine.dispose()
-

@@ -22,5 +22,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
+# Create a non-root user and switch to it for safer runtime
+RUN adduser --disabled-password --gecos "" appuser && chown -R appuser:appuser /code
+USER appuser
 
 

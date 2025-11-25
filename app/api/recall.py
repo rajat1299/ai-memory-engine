@@ -4,7 +4,7 @@ Phase 4: Retrieval & Context Injection
 """
 import logging
 import asyncio
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from rapidfuzz import fuzz
@@ -13,6 +13,7 @@ from app.database import get_db
 from app.schemas import RecallRequest, RecallResponse, FactDTO
 from app.models import MemoryFact
 from app.config import settings
+from app.security import ensure_user_authorized, API_KEY_HEADER
 
 router = APIRouter(prefix="/v1", tags=["recall"])
 logger = logging.getLogger(__name__)
@@ -54,7 +55,8 @@ def _fuzzy_score(query: str, content: str, confidence: float) -> tuple[float, in
 @router.post("/recall", response_model=RecallResponse)
 async def recall_facts(
     request: RecallRequest,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    api_key: str | None = Header(default=None, alias=API_KEY_HEADER)
 ):
     """
     POST /v1/recall
@@ -66,6 +68,7 @@ async def recall_facts(
     3. Order by confidence_score desc, created_at desc
     4. Map to FactDTO and return
     """
+    await ensure_user_authorized(request.user_id, api_key, db)
     query_embedding: list[float] | None = None
     vector_results: list[MemoryFact] = []
     try:
