@@ -9,7 +9,7 @@ from app.database import get_db
 from app.schemas import IngestRequest, IngestResponse, SessionCreate, SessionResponse, HistoryResponse, ChatLogResponse
 from app.models import ChatLog, Session
 from app.services.ingestion import IngestionService
-from sqlalchemy import select
+from sqlalchemy import select, join
 from app.security import ensure_user_authorized, API_KEY_HEADER
 
 router = APIRouter(prefix="/v1", tags=["ingestion"])
@@ -65,12 +65,15 @@ async def get_history(
     GET /v1/history/{session_id}
     Retrieve the last N messages from a session.
     """
-    session_stmt = select(Session).where(Session.id == session_id)
-    session_result = await db.execute(session_stmt)
-    session = session_result.scalar_one_or_none()
-    if not session:
+    stmt_session = (
+        select(Session.id, Session.user_id)
+        .where(Session.id == session_id)
+    )
+    session_result = await db.execute(stmt_session)
+    session_row = session_result.first()
+    if not session_row:
         raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
-    await ensure_user_authorized(session.user_id, api_key, db)
+    await ensure_user_authorized(session_row.user_id, api_key, db)
     
     stmt = select(ChatLog).where(
         ChatLog.session_id == session_id

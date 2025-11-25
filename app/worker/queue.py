@@ -35,7 +35,7 @@ async def enqueue_memory_extraction(session_id: str) -> str:
     """
     pool = await get_redis_pool()
     job = await pool.enqueue_job(
-        "extract_memory_facts",
+        "extract_facts_task",  # Must match function name in tasks.py
         session_id
     )
     return job.job_id

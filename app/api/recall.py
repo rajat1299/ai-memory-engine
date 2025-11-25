@@ -14,6 +14,7 @@ from app.schemas import RecallRequest, RecallResponse, FactDTO
 from app.models import MemoryFact
 from app.security import ensure_user_authorized, API_KEY_HEADER
 from app.llm import get_llm_provider
+from app.metrics import RECALL_LATENCY
 
 router = APIRouter(prefix="/v1", tags=["recall"])
 logger = logging.getLogger(__name__)
@@ -49,12 +50,13 @@ async def recall_facts(
     llm_provider = get_llm_provider()
     query_embedding: list[float] | None = None
     vector_results: list[MemoryFact] = []
-    try:
-        query_embedding = (await llm_provider.embed_texts([request.query]))[0]
-    except (RateLimitError, APIError, APIConnectionError, APITimeoutError) as exc:
-        logger.warning(f"Falling back to fuzzy recall; embedding transient error: {exc}")
-    except Exception as exc:
-        logger.warning(f"Falling back to fuzzy recall; embedding failed: {exc}")
+    with RECALL_LATENCY.labels(source="recall").time():
+        try:
+            query_embedding = (await llm_provider.embed_texts([request.query]))[0]
+        except (RateLimitError, APIError, APIConnectionError, APITimeoutError) as exc:
+            logger.warning(f"Falling back to fuzzy recall; embedding transient error: {exc}")
+        except Exception as exc:
+            logger.warning(f"Falling back to fuzzy recall; embedding failed: {exc}")
     
     now_ts = None
     if query_embedding:

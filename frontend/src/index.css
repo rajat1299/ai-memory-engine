@@ -1,0 +1,79 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-ink-faint/20;
+  }
+  
+  body {
+    @apply bg-surface min-h-screen;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-ink-faint/40 rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-ink-faint/60;
+  }
+
+  /* Selection */
+  ::selection {
+    @apply bg-amber/30 text-ink;
+  }
+}
+
+@layer components {
+  /* Glass effect for cards */
+  .glass {
+    @apply bg-surface-secondary/80 backdrop-blur-xl border border-white/5;
+  }
+
+  /* Subtle glow on focus */
+  .focus-glow:focus {
+    @apply outline-none ring-2 ring-amber/30 ring-offset-0;
+  }
+
+  /* Status indicator */
+  .status-dot {
+    @apply w-2 h-2 rounded-full;
+  }
+
+  .status-dot.active {
+    @apply bg-sage animate-pulse-soft;
+  }
+
+  .status-dot.pending {
+    @apply bg-amber animate-pulse-soft;
+  }
+
+  .status-dot.inactive {
+    @apply bg-ink-faint;
+  }
+}
+
+@layer utilities {
+  /* Fade gradient for overflow text */
+  .fade-right {
+    mask-image: linear-gradient(to right, black 80%, transparent 100%);
+  }
+
+  /* Smooth text rendering */
+  .text-smooth {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+

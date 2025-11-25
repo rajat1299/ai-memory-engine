@@ -1,8 +1,14 @@
 import asyncio
+import os
+import sys
 from logging.config import fileConfig
 from sqlalchemy import engine_from_config, pool
-from sqlalchemy.engine import URL
 from alembic import context
+
+# Ensure project root is on sys.path so `app` imports work
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 
 from app.models import Base
 from app.config import settings
@@ -19,13 +25,12 @@ target_metadata = Base.metadata
 
 def _sync_database_url() -> str:
     """
-    Convert async DB URL (postgresql+asyncpg) to sync for Alembic.
+    Convert async DB URL (postgresql+asyncpg) to sync (postgresql) for Alembic.
     """
-    url = URL.create(str(settings.DATABASE_URL))
-    drivername = url.drivername
-    if drivername.endswith("+asyncpg"):
-        drivername = drivername.replace("+asyncpg", "")
-    return url.set(drivername=drivername).render_as_string(hide_password=False)
+    url = str(settings.DATABASE_URL)
+    if "+asyncpg" in url:
+        url = url.replace("+asyncpg", "")
+    return url
 
 
 def run_migrations_offline():

@@ -2,6 +2,11 @@
 # Internal planning documents
 plan
 testrun.md
+openrouterllmdoc
+openrouterembeddingdoc
+frontendguide.md
+frontend/README.md
+README.md
 
 # Python
 __pycache__/
@@ -24,6 +29,10 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+
+# Node
+node_modules/
+.DS_Store
 
 # Environment
 .env

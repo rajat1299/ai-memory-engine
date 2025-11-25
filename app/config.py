@@ -20,13 +20,21 @@ class Settings(BaseSettings):
     REDIS_URL: RedisDsn
     
     # AI Providers
-    LLM_PROVIDER: Literal["openai", "anthropic", "gemini"] = "openai"
+    LLM_PROVIDER: Literal["openai", "anthropic", "gemini", "openrouter"] = "openai"
     OPENAI_API_KEY: Optional[SecretStr] = None
     ANTHROPIC_API_KEY: Optional[SecretStr] = None
     GEMINI_API_KEY: Optional[SecretStr] = None
+    OPENROUTER_API_KEY: Optional[SecretStr] = None
     CHAT_MODEL: str = "gpt-4o-mini"
+    ANTHROPIC_MODEL: str = "claude-3-haiku-20240307"
+    GEMINI_MODEL: str = "gemini-1.5-flash"
+    OPENROUTER_MODEL: str = "openai/gpt-4o-mini"
     EMBEDDING_MODEL: str = "text-embedding-3-small"
+    GEMINI_EMBEDDING_MODEL: str = "models/embedding-001"
+    OPENROUTER_EMBEDDING_MODEL: str = "openai/text-embedding-3-small"
     EMBEDDING_DIM: int = 1536
+    OPENROUTER_SITE_URL: Optional[str] = None
+    OPENROUTER_SITE_NAME: Optional[str] = None
     
     # API protection
     RATE_LIMIT_REQUESTS_PER_MIN: int = 60

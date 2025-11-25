@@ -57,6 +57,16 @@ class RecallResponse(BaseModel):
 # SESSION MANAGEMENT
 # ============================================================================
 
+class UserCreate(BaseModel):
+    """Request to create a new user"""
+    pass
+
+
+class UserResponse(BaseModel):
+    id: UUID
+    api_key: str
+
+
 class SessionCreate(BaseModel):
     """Request to create a new session"""
     user_id: UUID
@@ -90,4 +100,3 @@ class HistoryResponse(BaseModel):
     """Response containing chat history"""
     messages: list[ChatLogResponse]
     session_id: UUID
-

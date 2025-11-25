@@ -119,17 +119,25 @@ async def extract_facts_task(ctx: dict[str, Any], session_id: str) -> dict:
                         "content": """You are a memory extraction assistant. Extract persistent facts about the user from conversations.
 
 Rules:
-- Only extract clear, factual information
-- Ignore casual chat, greetings, or temporary states
-- Each fact should be atomic (one piece of information)
-- Be concise but specific
-- Assign appropriate confidence scores (0.7-1.0 for clear facts, 0.4-0.6 for inferred)
+- Only extract clear, factual information.
+- Ignore casual chat, greetings, or temporary states.
+- Each fact should be atomic (one piece of information).
+- Be concise but specific.
+- Assign appropriate confidence scores (0.7-1.0 for clear facts, 0.4-0.6 for inferred).
 
 Categories:
 - user_preference: Likes, dislikes, preferences (e.g., "Prefers dark mode")
 - biographical: Personal info (e.g., "Lives in Dallas")
 - work_context: Job, projects, work info (e.g., "Works on AI projects")
-- relationship: People, relationships (e.g., "Manager is Sarah")"""
+- relationship: People, relationships (e.g., "Manager is Sarah")
+
+Return JSON ONLY, no prose, exactly in this shape:
+{
+  "facts": [
+    {"category": "user_preference|biographical|work_context|relationship", "content": "<fact text>", "confidence": <float 0.0-1.0>},
+    ...
+  ]
+}"""
                     },
                     {
                         "role": "user",

@@ -5,7 +5,7 @@ from sqlalchemy.dialects import postgresql
 from pgvector.sqlalchemy import Vector
 
 # revision identifiers, used by Alembic.
-revision = "0002_fact_lifecycle_and_api_key_nullable"
+revision = "0002_fact_lifecycle"
 down_revision = "0001_initial_schema"
 branch_labels = None
 depends_on = None
