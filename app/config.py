@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     
     # AI Providers
     OPENAI_API_KEY: SecretStr
+    EMBEDDING_MODEL: str = "text-embedding-3-small"
+    EMBEDDING_DIM: int = 1536
     
     # App Settings
     API_V1_STR: str = "/api/v1"

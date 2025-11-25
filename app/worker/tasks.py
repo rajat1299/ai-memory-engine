@@ -4,12 +4,12 @@ Phase 4: Enhanced Memory Extraction with Deduplication
 """
 import asyncio
 import logging
-from arq import create_pool, cron
+from arq import cron
 from arq.connections import RedisSettings
-from openai import AsyncOpenAI
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from openai import AsyncOpenAI, APIError, RateLimitError, APIConnectionError, APITimeoutError
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy import select
-from typing import Any
+from typing import Any, Iterable
 from pydantic import BaseModel, Field
 import instructor
 from rapidfuzz import fuzz
@@ -20,10 +20,15 @@ from app.models import ChatLog, MemoryFact, FactCategory, Session
 # Setup Logger
 logger = logging.getLogger(__name__)
 
-# Initialize Instructor-patched OpenAI client
-openai_client = instructor.from_openai(
-    AsyncOpenAI(api_key=settings.OPENAI_API_KEY.get_secret_value())
-)
+# Initialize OpenAI clients (chat + embeddings) with instructor patch for chat
+_base_openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY.get_secret_value())
+instructor.patch(_base_openai_client)
+openai_client = _base_openai_client
+embedding_client = _base_openai_client
+
+# Shared DB engine/session for worker tasks to avoid per-job creation overhead
+worker_engine = create_async_engine(str(settings.DATABASE_URL), future=True)
+worker_sessionmaker = async_sessionmaker(worker_engine, class_=AsyncSession, expire_on_commit=False)
 
 
 # Pydantic models for structured extraction
@@ -51,15 +56,44 @@ class FactExtractionResponse(BaseModel):
     )
 
 
-def _is_fuzzy_duplicate(existing_texts: list[str], candidate: str, threshold: int = 90) -> bool:
+def _is_fuzzy_duplicate(existing_texts: list[str], candidate: str, threshold: int = 75) -> bool:
     """
     Check whether a candidate fact is a fuzzy duplicate of anything we've already stored.
-    Uses token-set ratio to be resilient to phrasing changes (e.g., 'Lives in SF' vs 'Resides in San Francisco').
+    Uses WRatio which combines multiple strategies and handles abbreviations well
+    (e.g., 'Lives in SF' vs 'Resides in San Francisco').
     """
     for existing in existing_texts:
-        if fuzz.token_set_ratio(existing, candidate) >= threshold:
+        if fuzz.WRatio(existing, candidate) >= threshold:
             return True
     return False
+
+
+async def _with_retry(coro_fn, *args, retries: int = 3, base_delay: float = 0.5, **kwargs):
+    """
+    Simple exponential backoff retry helper for transient OpenAI/connection errors.
+    """
+    for attempt in range(retries):
+        try:
+            return await coro_fn(*args, **kwargs)
+        except (RateLimitError, APIError, APIConnectionError, APITimeoutError) as exc:
+            if attempt == retries - 1:
+                raise
+            delay = base_delay * (2 ** attempt)
+            logger.warning(f"Retrying after transient error: {exc} (attempt {attempt + 1}/{retries})")
+            await asyncio.sleep(delay)
+
+
+async def _embed_texts(texts: Iterable[str]) -> list[list[float]]:
+    """
+    Batch embed texts using the configured embedding model.
+    """
+    response = await _with_retry(
+        embedding_client.embeddings.create,
+        model=settings.EMBEDDING_MODEL,
+        input=list(texts),
+        dimensions=settings.EMBEDDING_DIM,
+    )
+    return [item.embedding for item in response.data]
 
 
 async def extract_facts_task(ctx: dict[str, Any], session_id: str) -> dict:
@@ -75,10 +109,7 @@ async def extract_facts_task(ctx: dict[str, Any], session_id: str) -> dict:
     """
     logger.info(f"Starting fact extraction for session {session_id}")
     
-    # Get database session
-    engine = create_async_engine(str(settings.DATABASE_URL))
-    
-    async with AsyncSession(engine) as db:
+    async with worker_sessionmaker() as db:
         try:
             # 1. Fetch last 5 messages
             stmt = select(ChatLog).where(
@@ -106,7 +137,8 @@ async def extract_facts_task(ctx: dict[str, Any], session_id: str) -> dict:
             logger.info(f"Analyzing {len(messages)} messages for user {user_id}")
             
             # 3. Extract facts using OpenAI with Instructor
-            extraction_result = await openai_client.chat.completions.create(
+            extraction_result = await _with_retry(
+                openai_client.chat.completions.create,
                 model="gpt-4o-mini",
                 response_model=FactExtractionResponse,
                 messages=[
@@ -147,8 +179,8 @@ Categories:
             # Build list of existing contents for fuzzy matching
             existing_contents = [fact.content for fact in existing_facts]
             
-            # Filter out duplicates and save new facts
-            facts_saved = 0
+            # Filter out duplicates and save new facts (with embeddings)
+            pending_facts: list[MemoryFact] = []
             for extracted in extracted_facts:
                 if _is_fuzzy_duplicate(existing_contents, extracted.content):
                     logger.debug(f"Duplicate fact skipped: {extracted.content}")
@@ -161,10 +193,22 @@ Categories:
                     confidence_score=extracted.confidence,
                     source_message_id=messages[-1].id
                 )
-                db.add(new_fact)
-                facts_saved += 1
+                pending_facts.append(new_fact)
                 existing_contents.append(extracted.content)
                 logger.info(f"New fact: [{extracted.category.value}] {extracted.content}")
+
+            facts_saved = 0
+            if pending_facts:
+                try:
+                    embeddings = await _embed_texts([fact.content for fact in pending_facts])
+                except Exception as exc:  # keep saving facts even if embeddings fail
+                    logger.error(f"Embedding generation failed: {exc}", exc_info=True)
+                    embeddings = [None] * len(pending_facts)
+
+                for fact, embedding in zip(pending_facts, embeddings):
+                    fact.embedding = embedding
+                    db.add(fact)
+                    facts_saved += 1
             
             await db.commit()
             
@@ -184,25 +228,6 @@ Categories:
                 "error": str(e),
                 "session_id": session_id
             }
-        finally:
-            await engine.dispose()
-
-
-class WorkerSettings:
-    """ARQ worker configuration"""
-    
-    functions = [extract_facts_task, optimize_user_memory, scheduled_optimization]
-    
-    redis_settings = RedisSettings.from_dsn(str(settings.REDIS_URL))
-    
-    # Worker behavior
-    max_jobs = 10
-    job_timeout = 120  # 2 minutes per job
-    
-    # Cron jobs
-    cron_jobs = [
-        cron(scheduled_optimization, hour={0, 6, 12, 18}, minute=0)
-    ]
 
 
 # ============================================================================
@@ -226,8 +251,7 @@ async def optimize_user_memory(ctx: dict[str, Any], user_id: str) -> dict:
     """
     logger.info(f"Starting memory optimization for user {user_id}")
     
-    engine = create_async_engine(str(settings.DATABASE_URL))
-    async with AsyncSession(engine) as db:
+    async with worker_sessionmaker() as db:
         try:
             # 1. Fetch all non-essential facts
             # Note: Limit the batch size to control token/cost footprint
@@ -259,7 +283,8 @@ async def optimize_user_memory(ctx: dict[str, Any], user_id: str) -> dict:
             facts_text = "\n".join(facts_list)
             
             # 3. Call LLM to identify essential facts
-            response = await openai_client.chat.completions.create(
+            response = await _with_retry(
+                openai_client.chat.completions.create,
                 model="gpt-4o-mini",
                 response_model=OptimizationResponse,
                 messages=[
@@ -309,8 +334,6 @@ Return the list of INDICES (the number in brackets) for facts that are essential
         except Exception as e:
             logger.error(f"Error optimizing memory: {str(e)}", exc_info=True)
             return {"status": "error", "error": str(e)}
-        finally:
-            await engine.dispose()
 
 
 async def scheduled_optimization(ctx: dict[str, Any]):
@@ -318,9 +341,7 @@ async def scheduled_optimization(ctx: dict[str, Any]):
     Cron task: Find all users and enqueue optimization for them.
     """
     logger.info("Running scheduled memory optimization")
-    engine = create_async_engine(str(settings.DATABASE_URL))
-    
-    async with AsyncSession(engine) as db:
+    async with worker_sessionmaker() as db:
         # Get all distinct user_ids from facts table
         # (In a real app, query the Users table)
         stmt = select(MemoryFact.user_id).distinct()
@@ -329,5 +350,25 @@ async def scheduled_optimization(ctx: dict[str, Any]):
         
         for user_id in user_ids:
             await ctx["redis"].enqueue_job("optimize_user_memory", str(user_id))
-            
-    await engine.dispose()
+
+
+class WorkerSettings:
+    """ARQ worker configuration"""
+    
+    functions = [extract_facts_task, optimize_user_memory, scheduled_optimization]
+    
+    redis_settings = RedisSettings.from_dsn(str(settings.REDIS_URL))
+    
+    # Worker behavior
+    max_jobs = 10
+    job_timeout = 120  # 2 minutes per job
+    
+    # Cron jobs
+    cron_jobs = [
+        cron(scheduled_optimization, hour={0, 6, 12, 18}, minute=0)
+    ]
+    
+    @staticmethod
+    async def on_shutdown(ctx):
+        await worker_engine.dispose()
+

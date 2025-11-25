@@ -1,6 +1,7 @@
 # Memori Project - Git Ignore
 # Internal planning documents
 plan
+testrun.md
 
 # Python
 __pycache__/

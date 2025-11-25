@@ -10,6 +10,8 @@ from sqlalchemy import String, DateTime, ForeignKey, Float, Text, UUID, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlalchemy.orm import DeclarativeBase
+from pgvector.sqlalchemy import Vector
+from app.config import settings
 
 class Base(AsyncAttrs, DeclarativeBase):
     """Base class for all models. Enables async attributes."""
@@ -84,6 +86,10 @@ class MemoryFact(Base):
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
         server_default=func.now()
+    )
+    embedding: Mapped[Optional[list[float]]] = mapped_column(
+        Vector(settings.EMBEDDING_DIM),
+        nullable=True
     )
     
     # Relationships

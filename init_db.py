@@ -3,6 +3,7 @@ Database Initialization Script
 Run this to create tables in PostgreSQL
 """
 import asyncio
+from sqlalchemy import text
 from app.database import engine
 from app.models import Base
 
@@ -10,6 +11,8 @@ from app.models import Base
 async def init_db():
     """Create all tables based on SQLAlchemy models"""
     async with engine.begin() as conn:
+        # Ensure pgvector extension is available
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
         # Drop all tables (WARNING: destructive in production!)
         # await conn.run_sync(Base.metadata.drop_all)
         
