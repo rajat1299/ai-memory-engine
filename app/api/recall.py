@@ -5,6 +5,7 @@ Phase 4: Retrieval & Context Injection
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from rapidfuzz import fuzz
 from app.database import get_db
 from app.schemas import RecallRequest, RecallResponse, FactDTO
 from app.models import MemoryFact
@@ -27,30 +28,36 @@ async def recall_facts(
     3. Order by confidence_score desc, created_at desc
     4. Map to FactDTO and return
     """
-    stmt = select(MemoryFact).where(
-        MemoryFact.user_id == request.user_id
+    # Pull a candidate pool to rank in-memory with fuzzy similarity to avoid full table scans.
+    candidate_pool = min(max(request.limit * 10, 50), 500)
+    stmt = (
+        select(MemoryFact)
+        .where(MemoryFact.user_id == request.user_id)
+        .order_by(MemoryFact.created_at.desc())
+        .limit(candidate_pool)
     )
-    
-    # TODO: Implement full-text or vector search when query is provided
-    # For now, just return highest confidence facts
-    
-    stmt = stmt.order_by(
-        MemoryFact.confidence_score.desc(),
-        MemoryFact.created_at.desc()
-    ).limit(request.limit)
     
     result = await db.execute(stmt)
     facts = result.scalars().all()
     
-    # Map to FactDTO
+    ranked = []
+    for fact in facts:
+        similarity = fuzz.token_set_ratio(request.query, fact.content)
+        # Blend similarity and stored confidence to avoid low-quality hits
+        composite_score = (similarity * 0.7) + (fact.confidence_score * 30)
+        ranked.append((composite_score, similarity, fact))
+    
+    # Highest composite score first
+    ranked.sort(key=lambda item: item[0], reverse=True)
+    top_facts = [item[2] for item in ranked[: request.limit]]
+    
     fact_dtos = [
         FactDTO(
             category=fact.category.value,
             content=fact.content,
             confidence=fact.confidence_score
         )
-        for fact in facts
+        for fact in top_facts
     ]
     
     return RecallResponse(relevant_facts=fact_dtos)
-

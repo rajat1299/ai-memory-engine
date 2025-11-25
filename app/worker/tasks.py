@@ -12,6 +12,7 @@ from sqlalchemy import select
 from typing import Any
 from pydantic import BaseModel, Field
 import instructor
+from rapidfuzz import fuzz
 
 from app.config import settings
 from app.models import ChatLog, MemoryFact, FactCategory, Session
@@ -48,6 +49,17 @@ class FactExtractionResponse(BaseModel):
         default_factory=list,
         description="List of extracted memory facts"
     )
+
+
+def _is_fuzzy_duplicate(existing_texts: list[str], candidate: str, threshold: int = 90) -> bool:
+    """
+    Check whether a candidate fact is a fuzzy duplicate of anything we've already stored.
+    Uses token-set ratio to be resilient to phrasing changes (e.g., 'Lives in SF' vs 'Resides in San Francisco').
+    """
+    for existing in existing_texts:
+        if fuzz.token_set_ratio(existing, candidate) >= threshold:
+            return True
+    return False
 
 
 async def extract_facts_task(ctx: dict[str, Any], session_id: str) -> dict:
@@ -132,26 +144,27 @@ Categories:
             existing_result = await db.execute(stmt_existing)
             existing_facts = existing_result.scalars().all()
             
-            # Build set of existing fact contents (lowercased for comparison)
-            existing_contents = {fact.content.lower() for fact in existing_facts}
+            # Build list of existing contents for fuzzy matching
+            existing_contents = [fact.content for fact in existing_facts]
             
             # Filter out duplicates and save new facts
             facts_saved = 0
             for extracted in extracted_facts:
-                # Simple deduplication: check if similar content exists
-                if extracted.content.lower() not in existing_contents:
-                    new_fact = MemoryFact(
-                        user_id=user_id,
-                        category=extracted.category,
-                        content=extracted.content,
-                        confidence_score=extracted.confidence,
-                        source_message_id=messages[-1].id
-                    )
-                    db.add(new_fact)
-                    facts_saved += 1
-                    logger.info(f"New fact: [{extracted.category.value}] {extracted.content}")
-                else:
+                if _is_fuzzy_duplicate(existing_contents, extracted.content):
                     logger.debug(f"Duplicate fact skipped: {extracted.content}")
+                    continue
+                
+                new_fact = MemoryFact(
+                    user_id=user_id,
+                    category=extracted.category,
+                    content=extracted.content,
+                    confidence_score=extracted.confidence,
+                    source_message_id=messages[-1].id
+                )
+                db.add(new_fact)
+                facts_saved += 1
+                existing_contents.append(extracted.content)
+                logger.info(f"New fact: [{extracted.category.value}] {extracted.content}")
             
             await db.commit()
             
@@ -196,6 +209,9 @@ class WorkerSettings:
 # Memory Optimization (Conscious Agent)
 # ============================================================================
 
+OPTIMIZATION_MAX_FACTS = 200
+
+
 class OptimizationResponse(BaseModel):
     """Response from LLM identifying essential facts"""
     essential_fact_ids: list[int] = Field(
@@ -214,10 +230,18 @@ async def optimize_user_memory(ctx: dict[str, Any], user_id: str) -> dict:
     async with AsyncSession(engine) as db:
         try:
             # 1. Fetch all non-essential facts
-            # Note: In a real app, you might want to limit this or paginate
-            stmt = select(MemoryFact).where(
-                MemoryFact.user_id == user_id,
-                MemoryFact.is_essential == False
+            # Note: Limit the batch size to control token/cost footprint
+            stmt = (
+                select(MemoryFact)
+                .where(
+                    MemoryFact.user_id == user_id,
+                    MemoryFact.is_essential == False
+                )
+                .order_by(
+                    MemoryFact.confidence_score.desc(),
+                    MemoryFact.created_at.desc()
+                )
+                .limit(OPTIMIZATION_MAX_FACTS)
             )
             result = await db.execute(stmt)
             facts = result.scalars().all()
@@ -307,4 +331,3 @@ async def scheduled_optimization(ctx: dict[str, Any]):
             await ctx["redis"].enqueue_job("optimize_user_memory", str(user_id))
             
     await engine.dispose()
-

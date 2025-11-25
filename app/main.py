@@ -4,6 +4,7 @@ This is the entry point for the Memori API service.
 """
 from fastapi import FastAPI
 from app.api import ingest, recall, conscious
+from app.worker.queue import close_redis_pool
 
 app = FastAPI(
     title="Memori API",
@@ -21,3 +22,9 @@ app.include_router(conscious.router)
 async def root():
     """Health check endpoint"""
     return {"status": "healthy", "service": "memori-api"}
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Release shared resources on shutdown."""
+    await close_redis_pool()

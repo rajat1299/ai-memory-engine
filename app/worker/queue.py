@@ -18,6 +18,14 @@ async def get_redis_pool():
             RedisSettings.from_dsn(str(settings.REDIS_URL))
         )
     return _redis_pool
+    
+
+async def close_redis_pool():
+    """Close Redis pool on shutdown to avoid leaked connections."""
+    global _redis_pool
+    if _redis_pool is not None:
+        await _redis_pool.close()
+        _redis_pool = None
 
 
 async def enqueue_memory_extraction(session_id: str) -> str:

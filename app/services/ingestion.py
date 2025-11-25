@@ -4,6 +4,7 @@ RULE: All business logic lives here, not in routes.
 """
 import logging
 from uuid import UUID
+from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.models import ChatLog, Session
@@ -64,6 +65,6 @@ class IngestionService:
         session = result.scalar_one_or_none()
         
         if not session:
-            raise ValueError(f"Session {session_id} not found")
+            raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
         
         return session
