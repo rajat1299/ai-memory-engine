@@ -6,25 +6,19 @@ import asyncio
 import logging
 from arq import cron, Retry
 from arq.connections import RedisSettings
-from openai import AsyncOpenAI, APIError, RateLimitError, APIConnectionError, APITimeoutError
+from openai import APIError, RateLimitError, APIConnectionError, APITimeoutError
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy import select
-from typing import Any, Iterable
+from typing import Any
 from pydantic import BaseModel, Field
-import instructor
 from rapidfuzz import fuzz
 
 from app.config import settings
 from app.models import ChatLog, MemoryFact, FactCategory, Session
+from app.llm import get_llm_provider
 
 # Setup Logger
 logger = logging.getLogger(__name__)
-
-# Initialize OpenAI clients (chat + embeddings) with instructor patch for chat
-_base_openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY.get_secret_value())
-instructor.patch(_base_openai_client)
-openai_client = _base_openai_client
-embedding_client = _base_openai_client
 
 # Shared DB engine/session for worker tasks to avoid per-job creation overhead
 worker_engine = create_async_engine(str(settings.DATABASE_URL), future=True)
@@ -68,34 +62,6 @@ def _is_fuzzy_duplicate(existing_texts: list[str], candidate: str, threshold: in
     return False
 
 
-async def _with_retry(coro_fn, *args, retries: int = 3, base_delay: float = 0.5, **kwargs):
-    """
-    Simple exponential backoff retry helper for transient OpenAI/connection errors.
-    """
-    for attempt in range(retries):
-        try:
-            return await coro_fn(*args, **kwargs)
-        except (RateLimitError, APIError, APIConnectionError, APITimeoutError) as exc:
-            if attempt == retries - 1:
-                raise
-            delay = base_delay * (2 ** attempt)
-            logger.warning(f"Retrying after transient error: {exc} (attempt {attempt + 1}/{retries})")
-            await asyncio.sleep(delay)
-
-
-async def _embed_texts(texts: Iterable[str]) -> list[list[float]]:
-    """
-    Batch embed texts using the configured embedding model.
-    """
-    response = await _with_retry(
-        embedding_client.embeddings.create,
-        model=settings.EMBEDDING_MODEL,
-        input=list(texts),
-        dimensions=settings.EMBEDDING_DIM,
-    )
-    return [item.embedding for item in response.data]
-
-
 async def extract_facts_task(ctx: dict[str, Any], session_id: str) -> dict:
     """
     THE SMART PART: Enhanced memory extraction with deduplication.
@@ -136,11 +102,9 @@ async def extract_facts_task(ctx: dict[str, Any], session_id: str) -> dict:
             
             logger.info(f"Analyzing {len(messages)} messages for user {user_id}")
             
-            # 3. Extract facts using OpenAI with Instructor
-            extraction_result = await _with_retry(
-                openai_client.chat.completions.create,
-                model="gpt-4o-mini",
-                response_model=FactExtractionResponse,
+            # 3. Extract facts using LLM provider
+            llm_provider = get_llm_provider()
+            extraction_result = await llm_provider.chat_structured(
                 messages=[
                     {
                         "role": "system",
@@ -163,7 +127,8 @@ Categories:
                         "role": "user",
                         "content": f"Extract facts from this conversation:\n\n{conversation}"
                     }
-                ]
+                ],
+                response_model=FactExtractionResponse,
             )
             
             extracted_facts = extraction_result.facts
@@ -200,7 +165,8 @@ Categories:
             facts_saved = 0
             if pending_facts:
                 try:
-                    embeddings = await _embed_texts([fact.content for fact in pending_facts])
+                    llm_provider = get_llm_provider()
+                    embeddings = await llm_provider.embed_texts([fact.content for fact in pending_facts])
                 except Exception as exc:  # keep saving facts even if embeddings fail
                     logger.error(f"Embedding generation failed: {exc}", exc_info=True)
                     embeddings = [None] * len(pending_facts)
@@ -286,10 +252,8 @@ async def optimize_user_memory(ctx: dict[str, Any], user_id: str) -> dict:
             facts_text = "\n".join(facts_list)
             
             # 3. Call LLM to identify essential facts
-            response = await _with_retry(
-                openai_client.chat.completions.create,
-                model="gpt-4o-mini",
-                response_model=OptimizationResponse,
+            llm_provider = get_llm_provider()
+            response = await llm_provider.chat_structured(
                 messages=[
                     {
                         "role": "system",
@@ -312,7 +276,8 @@ Return the list of INDICES (the number in brackets) for facts that are essential
                         "role": "user",
                         "content": f"Analyze these facts and return indices of essential ones:\n\n{facts_text}"
                     }
-                ]
+                ],
+                response_model=OptimizationResponse,
             )
             
             # 4. Update Database

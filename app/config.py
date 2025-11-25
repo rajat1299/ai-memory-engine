@@ -4,6 +4,7 @@ All environment variables and secrets are loaded here.
 """
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import PostgresDsn, RedisDsn, SecretStr
+from typing import Literal, Optional
 
 class Settings(BaseSettings):
     """
@@ -19,7 +20,11 @@ class Settings(BaseSettings):
     REDIS_URL: RedisDsn
     
     # AI Providers
-    OPENAI_API_KEY: SecretStr
+    LLM_PROVIDER: Literal["openai", "anthropic", "gemini"] = "openai"
+    OPENAI_API_KEY: Optional[SecretStr] = None
+    ANTHROPIC_API_KEY: Optional[SecretStr] = None
+    GEMINI_API_KEY: Optional[SecretStr] = None
+    CHAT_MODEL: str = "gpt-4o-mini"
     EMBEDDING_MODEL: str = "text-embedding-3-small"
     EMBEDDING_DIM: int = 1536
     

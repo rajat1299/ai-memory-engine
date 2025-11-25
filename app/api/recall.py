@@ -8,38 +8,15 @@ from fastapi import APIRouter, Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from rapidfuzz import fuzz
-from openai import AsyncOpenAI, APIError, RateLimitError, APIConnectionError, APITimeoutError
+from openai import APIError, RateLimitError, APIConnectionError, APITimeoutError
 from app.database import get_db
 from app.schemas import RecallRequest, RecallResponse, FactDTO
 from app.models import MemoryFact
-from app.config import settings
 from app.security import ensure_user_authorized, API_KEY_HEADER
+from app.llm import get_llm_provider
 
 router = APIRouter(prefix="/v1", tags=["recall"])
 logger = logging.getLogger(__name__)
-_embedding_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY.get_secret_value())
-
-
-async def _with_retry(coro_fn, *args, retries: int = 3, base_delay: float = 0.5, **kwargs):
-    for attempt in range(retries):
-        try:
-            return await coro_fn(*args, **kwargs)
-        except (RateLimitError, APIError, APIConnectionError, APITimeoutError) as exc:
-            if attempt == retries - 1:
-                raise
-            delay = base_delay * (2 ** attempt)
-            logger.warning(f"Retrying embedding after transient error: {exc} (attempt {attempt + 1}/{retries})")
-            await asyncio.sleep(delay)
-
-
-async def _embed_query(text: str) -> list[float]:
-    response = await _with_retry(
-        _embedding_client.embeddings.create,
-        model=settings.EMBEDDING_MODEL,
-        input=[text],
-        dimensions=settings.EMBEDDING_DIM,
-    )
-    return response.data[0].embedding
 
 
 def _fuzzy_score(query: str, content: str, confidence: float) -> tuple[float, int]:
@@ -69,10 +46,13 @@ async def recall_facts(
     4. Map to FactDTO and return
     """
     await ensure_user_authorized(request.user_id, api_key, db)
+    llm_provider = get_llm_provider()
     query_embedding: list[float] | None = None
     vector_results: list[MemoryFact] = []
     try:
-        query_embedding = await _embed_query(request.query)
+        query_embedding = (await llm_provider.embed_texts([request.query]))[0]
+    except (RateLimitError, APIError, APIConnectionError, APITimeoutError) as exc:
+        logger.warning(f"Falling back to fuzzy recall; embedding transient error: {exc}")
     except Exception as exc:
         logger.warning(f"Falling back to fuzzy recall; embedding failed: {exc}")
     
