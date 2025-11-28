@@ -37,6 +37,9 @@ class RecallRequest(BaseModel):
     user_id: UUID
     query: str = Field(..., min_length=1, description="Current user input to search against")
     limit: int = Field(default=5, ge=1, le=20)
+    categories: list[str] | None = Field(default=None, description="Optional categories to filter (biographical, work_context, user_preference, relationship, learning)")
+    max_age_days: int | None = Field(default=None, description="Only return facts newer than this many days")
+    current_view_only: bool = Field(default=True, description="If true, suppress superseded facts and show only current/active (default: true)")
 
 
 class FactDTO(BaseModel):

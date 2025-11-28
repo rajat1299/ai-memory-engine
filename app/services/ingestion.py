@@ -32,7 +32,7 @@ class IngestionService:
         4. Return response with job_id
         """
         # Validate session exists
-        await self._validate_session(request.session_id)
+        await self._validate_session(request.session_id, request.user_id)
         
         # Create chat log
         chat_log = ChatLog(
@@ -58,13 +58,15 @@ class IngestionService:
             chat_log_id=chat_log.id
         )
     
-    async def _validate_session(self, session_id: UUID) -> Session:
-        """Validate that session exists"""
+    async def _validate_session(self, session_id: UUID, user_id: UUID) -> Session:
+        """Validate that session exists and belongs to the requesting user."""
         stmt = select(Session).where(Session.id == session_id)
         result = await self.db.execute(stmt)
         session = result.scalar_one_or_none()
         
         if not session:
             raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
+        if session.user_id != user_id:
+            raise HTTPException(status_code=403, detail="Session does not belong to user")
         
         return session

@@ -22,6 +22,7 @@ class FactCategory(str, PyEnum):
     BIOGRAPHICAL = "biographical"         # e.g. "Lives in Dallas"
     WORK_CONTEXT = "work_context"         # e.g. "Working on Project X"
     RELATIONSHIP = "relationship"         # e.g. "Manager is Sarah"
+    LEARNING = "learning"                 # e.g. "Studying AI", "Learning Spanish"
 
 class User(Base):
     __tablename__ = "users"
@@ -81,6 +82,7 @@ class MemoryFact(Base):
     # Metadata
     confidence_score: Mapped[float] = mapped_column(Float, default=1.0)
     source_message_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), default=None, nullable=True)
+    slot_hint: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, index=True)
     is_essential: Mapped[bool] = mapped_column(default=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

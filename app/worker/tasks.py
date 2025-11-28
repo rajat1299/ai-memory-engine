@@ -30,11 +30,15 @@ worker_sessionmaker = async_sessionmaker(worker_engine, class_=AsyncSession, exp
 class ExtractedFact(BaseModel):
     """Single extracted fact with strict validation"""
     category: FactCategory = Field(
-        description="Category of the fact: user_preference, biographical, work_context, or relationship"
+        description="Category of the fact: user_preference, biographical, work_context, relationship, or learning"
+    )
+    slot_hint: str | None = Field(
+        default=None,
+        description="Slot hint for supersession (e.g., employer, role, location, partner)."
     )
     content: str = Field(
         min_length=5,
-        description="The actual fact, concise and specific"
+        description="The actual fact, concise and specific (minimum 5 characters)"
     )
     confidence: float = Field(
         ge=0.0,
@@ -63,11 +67,47 @@ def _is_fuzzy_duplicate(existing_texts: list[str], candidate: str, threshold: in
     return False
 
 
+def _same_slot(fact: MemoryFact, new_category: FactCategory, new_slot: str | None) -> bool:
+    """
+    Define "slot" membership for supersedable facts.
+    
+    Rules:
+    - Categories must match
+    - If the new fact has no slot, supersede all within the category
+    - If the existing fact has no slot, treat it as same slot (legacy data)
+    - Otherwise, match on slot name
+    """
+    return (
+        fact.category == new_category
+        and (
+            fact.slot_hint is None
+            or new_slot is None
+            or fact.slot_hint == new_slot
+        )
+    )
+
+
 def _supersedable_category(category: FactCategory) -> bool:
     """
     Categories that should typically have one active value (e.g., location).
     """
-    return category in {FactCategory.BIOGRAPHICAL, FactCategory.RELATIONSHIP}
+    return category in {
+        FactCategory.BIOGRAPHICAL,   # location/home base
+        FactCategory.RELATIONSHIP,   # partner/relationship status
+        FactCategory.WORK_CONTEXT,    # supersede by slot_hint (employer, project, role)
+    }
+
+
+def _should_supersede(existing: MemoryFact, incoming_conf: float) -> bool:
+    """
+    Decide whether to supersede an existing fact with a new one in the same slot.
+    Favor more recent facts; allow a newer fact to supersede if it's not much lower confidence.
+    """
+    # If existing is superseded already, we can supersede it again safely
+    if existing.superseded_by is not None:
+        return True
+    # Allow supersession if confidence is within a reasonable band
+    return incoming_conf >= (existing.confidence_score - 0.15)
 
 
 async def extract_facts_task(ctx: dict[str, Any], session_id: str) -> dict:
@@ -128,16 +168,25 @@ Rules:
 Categories:
 - user_preference: Likes, dislikes, preferences (e.g., "Prefers dark mode")
 - biographical: Personal info (e.g., "Lives in Dallas")
-- work_context: Job, projects, work info (e.g., "Works on AI projects")
-- relationship: People, relationships (e.g., "Manager is Sarah")
+- work_context: Job, employer, work info (e.g., "Works at OpenAI", "Manager is Sarah")
+- relationship: People, relationships (e.g., "Partner is Sara")
+- learning: Studies/learning goals (e.g., "Learning AI", "Studying Spanish")
 
 Return JSON ONLY, no prose, exactly in this shape:
 {
   "facts": [
-    {"category": "user_preference|biographical|work_context|relationship", "content": "<fact text>", "confidence": <float 0.0-1.0>},
+    {"category": "user_preference|biographical|work_context|relationship|learning", "slot_hint": "<slot>", "content": "<fact text>", "confidence": <float 0.0-1.0>},
     ...
   ]
-}"""
+}
+
+slot_hint examples:
+- work_context: employer|role|project|skill
+- biographical: location
+- relationship: partner|friend|manager
+- learning: learning|studying
+- user_preference: preference"""
+
                     },
                     {
                         "role": "user",
@@ -183,19 +232,20 @@ Return JSON ONLY, no prose, exactly in this shape:
                     category=extracted.category,
                     content=extracted.content,
                     confidence_score=extracted.confidence,
+                    slot_hint=extracted.slot_hint,
                     source_message_id=messages[-1].id
                 )
                 pending_facts.append(new_fact)
                 existing_contents.append(extracted.content)
                 logger.info(f"New fact: [{extracted.category.value}] {extracted.content}")
 
-                # Supersede older facts in the same category when applicable
+                # Supersede older facts in the same slot when applicable
                 if _supersedable_category(extracted.category):
                     supersede_queue.extend(
                         [
                             fact
                             for fact in existing_facts
-                            if fact.category == extracted.category and fact.superseded_by is None
+                            if _same_slot(fact, extracted.category, extracted.slot_hint)
                         ]
                     )
 
@@ -216,12 +266,11 @@ Return JSON ONLY, no prose, exactly in this shape:
                 # Flush to obtain IDs for supersession updates
                 await db.flush()
                 for fact in supersede_queue:
-                    # Supersede older facts with the newest pending fact of that category
                     newest = next(
-                        (f for f in pending_facts if f.category == fact.category),
+                        (f for f in pending_facts if _same_slot(fact, f.category, f.slot_hint)),
                         None
                     )
-                    if newest:
+                    if newest and _should_supersede(fact, newest.confidence_score):
                         fact.superseded_by = newest.id
                         db.add(fact)
             
