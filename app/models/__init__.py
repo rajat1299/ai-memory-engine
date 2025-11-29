@@ -24,6 +24,17 @@ class FactCategory(str, PyEnum):
     RELATIONSHIP = "relationship"         # e.g. "Manager is Sarah"
     LEARNING = "learning"                 # e.g. "Studying AI", "Learning Spanish"
 
+
+class TemporalState(str, PyEnum):
+    """
+    Indicates whether a fact represents a current, past, or future state.
+    Used to distinguish "Lives in Austin" (current) from "Used to live in Dallas" (past).
+    """
+    CURRENT = "current"       # Present state - this is true NOW (default)
+    PAST = "past"             # Historical - was true but no longer ("used to", "previously")
+    FUTURE = "future"         # Planned/intended - not yet true ("will", "planning to")
+    RECURRING = "recurring"   # Happens periodically ("every week", "usually", "often")
+
 class User(Base):
     __tablename__ = "users"
 
@@ -83,6 +94,12 @@ class MemoryFact(Base):
     confidence_score: Mapped[float] = mapped_column(Float, default=1.0)
     source_message_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), default=None, nullable=True)
     slot_hint: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, index=True)
+    temporal_state: Mapped[str] = mapped_column(
+        String(20),
+        default="current",
+        server_default="current",
+        index=True
+    )
     is_essential: Mapped[bool] = mapped_column(default=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

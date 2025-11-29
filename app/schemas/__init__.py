@@ -40,6 +40,7 @@ class RecallRequest(BaseModel):
     categories: list[str] | None = Field(default=None, description="Optional categories to filter (biographical, work_context, user_preference, relationship, learning)")
     max_age_days: int | None = Field(default=None, description="Only return facts newer than this many days")
     current_view_only: bool = Field(default=True, description="If true, suppress superseded facts and show only current/active (default: true)")
+    include_historical: bool = Field(default=False, description="If true, include past/historical facts; otherwise only return current/future/recurring facts")
 
 
 class FactDTO(BaseModel):
@@ -47,6 +48,7 @@ class FactDTO(BaseModel):
     category: str
     content: str
     confidence: float
+    temporal_state: str = "current"  # current, past, future, recurring
     
     model_config = ConfigDict(from_attributes=True)
 
@@ -103,3 +105,37 @@ class HistoryResponse(BaseModel):
     """Response containing chat history"""
     messages: list[ChatLogResponse]
     session_id: UUID
+
+
+# ============================================================================
+# FACTS
+# ============================================================================
+
+class FactWithId(BaseModel):
+    """Fact DTO with full metadata for list endpoint."""
+    id: UUID
+    category: str
+    content: str
+    confidence: float
+    is_essential: bool
+    created_at: datetime
+    source_message_id: UUID | None = None
+    temporal_state: str | None = None
+    
+    model_config = ConfigDict(from_attributes=True)
+
+
+class FactsListResponse(BaseModel):
+    """Response for listing facts."""
+    facts: list[FactWithId]
+
+
+class FactSourceResponse(BaseModel):
+    """Response including source message for a fact."""
+    fact_id: UUID
+    source_message_id: UUID | None
+    session_id: UUID | None
+    role: str | None
+    content: str | None
+    content_preview: str | None
+    timestamp: datetime | None

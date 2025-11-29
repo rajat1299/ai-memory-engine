@@ -5,13 +5,14 @@ This is the entry point for the Memori API service.
 import time
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, JSONResponse
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 import structlog
 from app.api import ingest, recall, conscious
 from app.api import auth, facts, users
 from app.worker.queue import close_redis_pool
 from app.metrics import REQUEST_COUNT, REQUEST_LATENCY
+from app.errors import MemoriError
 
 logger = structlog.get_logger()
 
@@ -55,6 +56,25 @@ async def metrics_middleware(request: Request, call_next):
 @app.get("/metrics")
 async def metrics():
     return PlainTextResponse(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+
+@app.exception_handler(MemoriError)
+async def memori_error_handler(request: Request, exc: MemoriError):
+    logger.warning(
+        "memori_error",
+        path=request.url.path,
+        code=exc.code,
+        status=exc.status_code,
+        details=exc.details,
+    )
+    payload = {
+        "error": {
+            "code": exc.code,
+            "message": exc.message,
+            "details": exc.details,
+        }
+    }
+    return JSONResponse(status_code=exc.status_code, content=payload)
 
 
 # Include API routers
