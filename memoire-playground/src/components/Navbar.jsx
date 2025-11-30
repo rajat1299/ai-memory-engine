@@ -17,6 +17,7 @@ const Navbar = () => {
 
                 <div className="hidden md:flex absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 items-center gap-8 text-sm font-body text-text/70">
                     <a href="#features" className="hover:text-text transition-colors">Features</a>
+                    <Link to="/docs" className="hover:text-text transition-colors">Docs</Link>
                     <a href="#manifesto" className="hover:text-text transition-colors">Manifesto</a>
                     <a href="#pricing" className="hover:text-text transition-colors">Pricing</a>
                 </div>
@@ -25,8 +26,8 @@ const Navbar = () => {
                     <Link to="/demo" className="text-sm font-body text-text hover:text-accent transition-colors">
                         Try Demo
                     </Link>
-                    <Link 
-                        to="/demo" 
+                    <Link
+                        to="/demo"
                         className="px-4 py-2 bg-white/5 border border-white/10 rounded-md text-sm font-body text-text hover:bg-white/10 transition-colors"
                     >
                         Get Access

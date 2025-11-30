@@ -26,3 +26,13 @@
 ::-webkit-scrollbar-thumb:hover {
   @apply bg-accent;
 }
+
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
