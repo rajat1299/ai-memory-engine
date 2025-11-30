@@ -1,47 +1,64 @@
-# "Mémoire" API 
+# Mémoire
 
-**Mémoire** is a production-grade, service-oriented memory engine for AI agents. It provides persistent, long-term memory on top of PostgreSQL + pgvector, with a clean, language-agnostic HTTP API.
+**Mémoire** is a production-grade, service-oriented memory engine for AI agents. It provides persistent, long-term memory on top of PostgreSQL + pgvector, accessible via a high-performance Python SDK or a clean, language-agnostic HTTP API.
 
-Designed as a "Sidecar Brain," it runs alongside your main application, handling memory ingestion, storage, optimization, and retrieval via a clean REST API.
+Designed as a "Sidecar Brain," it runs alongside your main application, handling memory ingestion, storage, optimization, and retrieval. It allows you to build "Stateful LLMs" that remember user details, preferences, and past context across sessions.
 
----
+-----
 
 ## 🚀 Key Features
 
-- **Sidecar Memory Service**: Runs as a standalone Docker service. Your app stays lightweight; Memori handles the heavy lifting.
-- **SQL + Vectors**: PostgreSQL 15 + `pgvector` for portable, queryable, and semantically searchable memories.
-- **Dual Memory System**:
-  - **Conscious / Working Memory**: “Essential” facts (identity, long‑term prefs) returned by `/v1/conscious`.
-  - **Long‑Term Recall**: Query‑aware retrieval via `/v1/recall`.
-- **Intelligent Extraction Pipeline**:
-  - Uses pluggable LLM providers (OpenAI, Anthropic, Gemini, OpenRouter) for structured fact extraction.
-  - Fuzzy deduplication and **slot‑based supersession** (e.g., “moved from SF to Dallas” supersedes the old location).
-  - Lifecycle metadata: `superseded_by`, `expires_at`, `last_refreshed_at`, plus periodic decay of stale facts.
-- **Recall That Respects Context**:
-  - Hybrid **vector + fuzzy** retrieval with filters (`categories`, `max_age_days`, `current_view_only`).
-  - Conflict‑aware “current view” that hides superseded facts.
-- **Secure API Access**:
-  - Per‑user API keys via `/v1/users`, sent as `X-API-Key`.
-  - Per‑key rate limiting built in.
-- **Observability**:
-  - Prometheus metrics at `/metrics` (request counts/latency, recall latency).
-  - Structured validation via Pydantic everywhere.
+### 🧠 The Intelligence Engine
 
----
+  - **SQL + Vectors**: PostgreSQL 15 + `pgvector` for portable, queryable, and semantically searchable memories.
+
+  - **Dual Memory System**:
+
+      - **Conscious / Working Memory**: "Essential" facts (identity, long‑term prefs) available immediately at session start.
+
+      - **Long‑Term Recall**: Query‑aware retrieval based on semantic relevance.
+
+  - **Intelligent Extraction Pipeline**:
+
+      - Uses pluggable LLM providers (OpenAI, Anthropic, Gemini, OpenRouter) for structured fact extraction.
+
+      - **Slot‑Based Supersession**: Intelligent updates where new facts override old ones (e.g., "moved to Dallas" supersedes "lives in SF").
+
+      - **Lifecycle Management**: Tracks `superseded_by`, `last_refreshed_at`, and applies periodic decay to stale facts.
+
+### 🔌 Integration & SDK
+
+  - **Sidecar Memory Service**: Runs as a standalone Docker service. Your app stays lightweight; Mémoire handles the heavy lifting.
+
+  - **Python SDK**: A "Fail-Open" wrapper for your LLM client. If the memory backend is down, your app continues functioning (just without memory).
+
+  - **Streaming Support**: Fully compatible with streaming LLM responses.
+
+  - **Observability**: Prometheus metrics (request counts, latency) and structured Pydantic validation.
+
+  - **Secure Access**: Per-user API keys and built-in rate limiting.
+
+-----
 
 ## 🏗️ Architecture
 
 The system is built on a robust, async-first stack:
 
-- **API Layer**: FastAPI (Python 3.11+)
-- **Database**: PostgreSQL 15 + `pgvector`
-- **Queue/Cache**: Redis
-- **Worker**: ARQ (Async Task Queue)
-- **ORM**: SQLAlchemy 2.0 (Async)
+  - **API Layer**: FastAPI (Python 3.11+)
+
+  - **Database**: PostgreSQL 15 + `pgvector`
+
+  - **Queue/Cache**: Redis
+
+  - **Worker**: ARQ (Async Task Queue)
+
+  - **SDK**: Python client wrapping standard LLM libraries
+
+<!-- end list -->
 
 ```mermaid
 graph TD
-    Client[Your App] -->|POST /v1/ingest| API[Memori API]
+    Client[Your App / SDK] -->|POST /v1/ingest| API[Mémoire API]
     Client -->|GET /v1/conscious| API
     Client -->|POST /v1/recall| API
     
@@ -49,20 +66,22 @@ graph TD
     API --> Redis[(Redis)]
     
     Worker[ARQ Worker] -->|Poll| Redis
-    Worker -->|Extract & Optimize| OpenAI[OpenAI API]
+    Worker -->|Extract & Optimize| OpenAI[LLM Provider]
     Worker -->|Save Facts| DB
 ```
 
----
+-----
 
 ## ⚡ Quick Start
 
 ### Prerequisites
-- Docker & Docker Compose
-- A Postgres + Redis instance (or use the included `docker-compose.yml`)
-- An LLM provider key (OpenAI, OpenRouter, Anthropic, or Gemini)
 
-### 1. Setup
+  - Docker & Docker Compose
+
+  - An LLM provider key (OpenAI, OpenRouter, Anthropic, or Gemini)
+
+### 1\. Backend Setup
+
 ```bash
 # Clone the repository
 git clone https://github.com/rajat1299/ai-memory-engine.git
@@ -72,20 +91,17 @@ cd ai-memory-engine
 cp .env.example .env
 ```
 
-Edit `.env` and set at least:
+Edit `.env` and set your LLM credentials:
 
 ```env
 DATABASE_URL=postgresql+asyncpg://memori:memori@db:5432/memori
 REDIS_URL=redis://redis:6379
 
-LLM_PROVIDER=openrouter        # or: openai|anthropic|gemini
-OPENROUTER_API_KEY=sk-or-...   # or the corresponding provider key
-OPENROUTER_MODEL=openai/gpt-4o-mini
-OPENROUTER_EMBEDDING_MODEL=openai/text-embedding-3-small
-DEBUG=False
+LLM_PROVIDER=openrouter       # or: openai|anthropic|gemini
+OPENROUTER_API_KEY=sk-or-...   
 ```
 
-### 2. Run (Docker)
+### 2\. Run Services
 
 ```bash
 # Start Postgres + Redis
@@ -98,126 +114,114 @@ docker-compose run api alembic upgrade head
 docker-compose up api worker
 ```
 
-The API will be available at `http://localhost:8000`.
+The API is now active at `http://localhost:8000`.
 
----
+-----
 
-## 🔌 API Usage
+## 💻 Usage: Python SDK (Recommended)
 
-### 0. Create a Memori user + API key
+The easiest way to integrate Mémoire is via the Python SDK, which wraps your existing LLM client to automate memory injection and extraction.
+
+### 1\. Install
 
 ```bash
-curl -X POST http://localhost:8000/v1/users \
-  -H "Content-Type: application/json" \
-  -d '{}'
+pip install -e ".[openai]"
 ```
 
-**Response:**
-```json
-{
-  "id": "435a51ce-786f-4fe2-8b20-f0880f86d965",
-  "api_key": "memori_... (shown once)"
-}
+### 2\. Auto-Memory Integration
+
+```python
+from memoire import Memoire
+import openai
+
+# Initialize the SDK with your Mémoire API Key
+memoire = Memoire(api_key="memori_...")
+
+# Wrap your OpenAI client
+client = memoire.wrap(openai.OpenAI())
+
+# 1. First interaction: Fact is ingested automatically
+response = client.chat.completions.create(
+    model="gpt-4o",
+    user="user-123", # Required for memory tracking
+    messages=[{"role": "user", "content": "I live in Austin, Texas now."}]
+)
+
+# ... Time passes ...
+
+# 2. Second interaction: Memory is automatically recalled and injected
+response = client.chat.completions.create(
+    model="gpt-4o", 
+    user="user-123",
+    messages=[{"role": "user", "content": "Where do I live?"}]
+)
+
+# Output: "You live in Austin, Texas."
 ```
 
-Store `id` and `api_key` on the client side. All subsequent calls must send:
+-----
 
-```http
-X-API-Key: memori_...
+## 🔌 Usage: REST API
+
+If you are not using Python, or need fine-grained control, use the HTTP API directly.
+
+### 1\. Create User & Key
+
+```bash
+curl -X POST http://localhost:8000/v1/users -d '{}'
+# Returns: {"id": "...", "api_key": "memori_..."}
 ```
 
-### 1. Create a session
+### 2\. Create Session
 
 ```bash
 curl -X POST http://localhost:8000/v1/sessions \
-  -H "Content-Type: application/json" \
   -H "X-API-Key: memori_..." \
-  -d '{
-    "user_id": "435a51ce-786f-4fe2-8b20-f0880f86d965"
-  }'
+  -d '{ "user_id": "<USER_ID>" }'
 ```
 
-**Response:**
-```json
-{
-  "id": "63154bff-f4b4-419c-bba4-372d6a89c3dc",
-  "user_id": "435a51ce-786f-4fe2-8b20-f0880f86d965",
-  "created_at": "2025-11-25T19:04:42.438656Z"
-}
-```
+### 3\. Ingest Chat (Write)
 
-### 2. Ingest chat (write)
+Triggers the extraction pipeline to parse facts from the conversation.
 
 ```bash
 curl -X POST http://localhost:8000/v1/ingest \
-  -H "Content-Type: application/json" \
   -H "X-API-Key: memori_..." \
   -d '{
-    "user_id": "435a51ce-786f-4fe2-8b20-f0880f86d965",
-    "session_id": "63154bff-f4b4-419c-bba4-372d6a89c3dc",
+    "user_id": "<USER_ID>",
+    "session_id": "<SESSION_ID>",
     "role": "user",
     "content": "I live in Austin now and love hiking."
   }'
 ```
 
-This:
-- Writes a chat log row.
-- Enqueues `extract_facts_task` in Redis.
-- Worker extracts facts, dedups, supersedes old BIOGRAPHICAL facts (e.g., old location), and stores embeddings.
+### 4\. Recall (Read)
 
-### 3. Recall (read)
-
-Retrieve relevant facts for a query:
+Retrieve relevant facts using hybrid vector + fuzzy search.
 
 ```bash
 curl -X POST http://localhost:8000/v1/recall \
-  -H "Content-Type: application/json" \
   -H "X-API-Key: memori_..." \
   -d '{
-    "user_id": "435a51ce-786f-4fe2-8b20-f0880f86d965",
-    "query": "where do I live now?",
-    "limit": 5,
-    "current_view_only": true,
-    "max_age_days": 90,
-    "categories": ["biographical"]
+    "user_id": "<USER_ID>",
+    "query": "where do I live?",
+    "current_view_only": true
   }'
 ```
 
-**Response (example):**
-```json
-{
-  "relevant_facts": [
-    {
-      "category": "biographical",
-      "content": "Lives in Austin",
-      "confidence": 0.96
-    }
-  ]
-}
-```
-
-### 4. Conscious load (essential facts)
-
-At session start, load “always‑on” facts:
-
-```bash
-curl -X GET http://localhost:8000/v1/conscious/435a51ce-786f-4fe2-8b20-f0880f86d965 \
-  -H "X-API-Key: memori_..."
-```
-
-This returns the essential subset (`is_essential = true`) chosen by the optimization job.
-
----
+-----
 
 ## 🧠 Background Intelligence
 
-Memori runs two types of background tasks:
+Mémoire runs asynchronous tasks to ensure memory remains relevant and clean:
 
-1.  **Immediate Extraction**: Triggered on `/ingest`. Extracts atomic facts from the last few messages.
-2.  **Periodic Optimization**: Runs every 6 hours. Analyzes the user's memory bank to identify and promote "Essential" facts (setting `is_essential=true`), which are then returned by the `/conscious` endpoint.
-3.  **Decay**: Periodically reduces confidence for stale facts, based on `last_refreshed_at`, so long‑unused facts fade over time.
+1.  **Immediate Extraction**: Triggered on `/ingest`. Extracts atomic facts from the last few messages, deduplicates them, and stores embeddings.
 
----
+2.  **Periodic Optimization**: Runs every 6 hours. Analyzes the user's memory bank to identify "Essential" facts (setting `is_essential=true`), which are promoted to the `/conscious` payload for fast loading.
+
+3.  **Decay**: Periodically reduces confidence scores for stale facts based on `last_refreshed_at`, allowing unused information to fade naturally.
+
+-----
 
 ## 🛠️ Development
 
@@ -227,9 +231,6 @@ docker-compose run api pytest
 
 # Lint code
 docker-compose run api ruff check .
-
-# Check coverage
-docker-compose run api coverage run -m pytest
 ```
 
 ## 📄 License

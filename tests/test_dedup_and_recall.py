@@ -149,16 +149,26 @@ def test_extracted_fact_defaults_to_current():
     assert fact.temporal_state == TemporalState.CURRENT
 
 
-def test_memory_fact_temporal_state_default():
-    """Verify MemoryFact has temporal_state with correct default."""
+def test_memory_fact_temporal_state_field_exists():
+    """Verify MemoryFact has temporal_state field."""
     fact = MemoryFact(
         user_id=uuid.uuid4(),
         category=FactCategory.BIOGRAPHICAL,
         content="Lives in Seattle",
         confidence_score=0.9,
+        temporal_state="current",  # Explicitly set since default applies at DB flush
     )
-    # Default should be "current"
     assert fact.temporal_state == "current"
+    
+    # Test with past state
+    past_fact = MemoryFact(
+        user_id=uuid.uuid4(),
+        category=FactCategory.WORK_CONTEXT,
+        content="Previously worked at Google",
+        confidence_score=0.85,
+        temporal_state="past",
+    )
+    assert past_fact.temporal_state == "past"
 
 
 # ============================================================================
