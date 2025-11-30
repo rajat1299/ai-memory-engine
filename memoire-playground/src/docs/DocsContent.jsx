@@ -68,13 +68,13 @@ const DocsContent = () => {
 
     return (
         <div className="prose prose-lg prose-headings:font-display prose-headings:text-text prose-p:text-text/80 prose-strong:text-text prose-code:text-accent prose-pre:bg-transparent prose-pre:p-0 max-w-none 
-      prose-h1:mb-16 prose-h1:text-5xl prose-h1:leading-tight
-      prose-h2:mt-32 prose-h2:mb-10 prose-h2:text-3xl prose-h2:border-b prose-h2:border-border/50 prose-h2:pb-6 prose-h2:scroll-mt-32
-      prose-h3:mt-24 prose-h3:mb-8 prose-h3:text-2xl prose-h3:scroll-mt-32
-      prose-p:leading-loose prose-p:mb-12 prose-p:text-lg
-      prose-li:my-4 prose-ul:my-10 prose-ul:list-disc prose-ul:pl-6
-      prose-table:my-16
-      prose-img:rounded-xl prose-img:shadow-lg prose-img:my-16">
+      prose-h1:mb-10 prose-h1:text-5xl prose-h1:mt-0 prose-h1:scroll-mt-28
+      prose-h2:mt-16 prose-h2:mb-6 prose-h2:text-3xl prose-h2:border-b prose-h2:border-border/50 prose-h2:pb-3 prose-h2:first:mt-0 prose-h2:scroll-mt-28
+      prose-h3:mt-12 prose-h3:mb-5 prose-h3:text-2xl prose-h3:scroll-mt-28
+      prose-p:leading-relaxed prose-p:mb-6 prose-p:text-lg
+      prose-li:my-2 prose-ul:my-6 prose-ul:list-disc prose-ul:pl-6
+      prose-table:my-10
+      prose-img:rounded-xl prose-img:shadow-lg prose-img:my-10">
             <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 rehypePlugins={[rehypeSlug]}
@@ -82,7 +82,7 @@ const DocsContent = () => {
                     code({ node, inline, className, children, ...props }) {
                         const match = /language-(\w+)/.exec(className || '');
                         return !inline && match ? (
-                            <div className="rounded-lg overflow-hidden my-10 border border-white/10 shadow-2xl bg-[#1e1e1e]">
+                            <div className="rounded-lg overflow-hidden my-8 border border-white/10 shadow-lg bg-[#1e1e1e]">
                                 <div className="bg-[#2d2d2d] px-4 py-3 flex items-center justify-between border-b border-white/5">
                                     <div className="flex gap-2">
                                         <div className="w-3 h-3 rounded-full bg-red-500/20"></div>
@@ -91,15 +91,17 @@ const DocsContent = () => {
                                     </div>
                                     <span className="text-xs text-white/40 font-mono uppercase tracking-wider">{match[1]}</span>
                                 </div>
-                                <SyntaxHighlighter
-                                    style={vscDarkPlus}
-                                    language={match[1]}
-                                    PreTag="div"
-                                    customStyle={{ margin: 0, borderRadius: 0, background: 'transparent', padding: '1.5rem' }}
-                                    {...props}
-                                >
-                                    {String(children).replace(/\n$/, '')}
-                                </SyntaxHighlighter>
+                                <div className="overflow-x-auto no-scrollbar">
+                                    <SyntaxHighlighter
+                                        style={vscDarkPlus}
+                                        language={match[1]}
+                                        PreTag="div"
+                                        customStyle={{ margin: 0, borderRadius: 0, background: 'transparent', padding: '1.5rem', overflow: 'visible' }}
+                                        {...props}
+                                    >
+                                        {String(children).replace(/\n$/, '')}
+                                    </SyntaxHighlighter>
+                                </div>
                             </div>
                         ) : (
                             <code className="bg-accent/10 text-accent px-1.5 py-0.5 rounded font-mono text-sm" {...props}>
@@ -109,7 +111,7 @@ const DocsContent = () => {
                     },
                     table({ children }) {
                         return (
-                            <div className="overflow-x-auto my-12 border border-border rounded-xl shadow-sm">
+                            <div className="overflow-x-auto my-10 border border-border rounded-xl shadow-sm">
                                 <table className="min-w-full divide-y divide-border">
                                     {children}
                                 </table>
@@ -138,7 +140,7 @@ const DocsContent = () => {
                     },
                     blockquote({ children }) {
                         return (
-                            <blockquote className="border-l-4 border-accent/50 pl-6 my-10 italic text-text/70 bg-secondary/20 py-4 pr-4 rounded-r-lg">
+                            <blockquote className="border-l-4 border-accent/50 pl-6 my-8 italic text-text/70 bg-secondary/20 py-4 pr-4 rounded-r-lg">
                                 {children}
                             </blockquote>
                         );
