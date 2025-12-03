@@ -31,7 +31,7 @@ const Connection = ({ delay }) => (
 
 const ArchitectureDiagram = () => {
     return (
-        <section className="py-32 bg-secondary/30 relative overflow-hidden">
+        <section id="architecture" className="py-32 bg-secondary/30 relative overflow-hidden">
             <div className="container mx-auto px-6 max-w-7xl">
                 <div className="flex flex-col lg:flex-row items-center gap-16">
                     {/* Left Column: Diagram */}

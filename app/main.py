@@ -13,6 +13,7 @@ from app.api import auth, facts, users
 from app.worker.queue import close_redis_pool
 from app.metrics import REQUEST_COUNT, REQUEST_LATENCY
 from app.errors import MemoriError
+from app.config import settings
 
 logger = structlog.get_logger()
 
@@ -25,12 +26,7 @@ app = FastAPI(
 # CORS for frontend development
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:5174",
-        "http://127.0.0.1:5174",
-    ],
+    allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -84,6 +80,13 @@ app.include_router(conscious.router)
 app.include_router(auth.router)
 app.include_router(facts.router)
 app.include_router(users.router)
+
+
+
+@app.get("/health")
+async def health():
+    """Health check endpoint for container orchestration."""
+    return {"status": "healthy"}
 
 
 @app.get("/")

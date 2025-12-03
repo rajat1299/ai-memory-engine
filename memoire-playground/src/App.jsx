@@ -10,6 +10,7 @@ import CTASection from './components/CTASection';
 import Footer from './components/Footer';
 import { DemoPage } from './demo';
 import DocsPage from './docs/DocsPage';
+import PrivacyPage from './pages/PrivacyPage';
 
 // Landing page component
 const LandingPage = () => (
@@ -34,6 +35,7 @@ function App() {
         <Route path="/" element={<LandingPage />} />
         <Route path="/demo" element={<DemoPage />} />
         <Route path="/docs/*" element={<DocsPage />} />
+        <Route path="/privacy" element={<PrivacyPage />} />
       </Routes>
     </BrowserRouter>
   );

@@ -5,24 +5,40 @@
 @tailwind utilities;
 
 @layer base {
+
+  html,
   body {
-    @apply bg-bg text-text font-body antialiased;
+    @apply bg-bg text-text font-body antialiased overflow-x-hidden;
   }
-  h1, h2, h3, h4, h5, h6 {
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
     @apply font-display;
   }
+}
+
+/* Hide horizontal scrollbar globally */
+::-webkit-scrollbar:horizontal {
+  display: none;
 }
 
 /* Custom Scrollbar */
 ::-webkit-scrollbar {
   width: 8px;
 }
+
 ::-webkit-scrollbar-track {
   @apply bg-bg;
 }
+
 ::-webkit-scrollbar-thumb {
   @apply bg-gray-800 rounded-full;
 }
+
 ::-webkit-scrollbar-thumb:hover {
   @apply bg-accent;
 }
@@ -31,6 +47,7 @@
   .no-scrollbar::-webkit-scrollbar {
     display: none;
   }
+
   .no-scrollbar {
     -ms-overflow-style: none;
     scrollbar-width: none;

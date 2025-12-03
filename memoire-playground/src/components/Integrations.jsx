@@ -80,7 +80,7 @@ const MarqueeRow = ({ items, direction = "left", speed = 50 }) => {
 
 export default function Integrations() {
   return (
-    <section className="py-32 border-y border-border/40 bg-secondary/30 relative overflow-hidden">
+    <section id="stack" className="py-32 border-y border-border/40 bg-secondary/30 relative overflow-hidden">
       {/* Background Noise */}
       <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-5 pointer-events-none" />
 
